@@ -216,8 +216,11 @@ tbody tr:hover td{background:var(--bg)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         Empresas
       </button>
+      <button class="nav-item" onclick="showTab('regras')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Regras aprendidas
+      </button>
       <div class="nav-sep"></div>
-      <button class="nav-item" onclick="showTab('cadastro')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
         Contas
       </button>
@@ -386,6 +389,43 @@ tbody tr:hover td{background:var(--bg)}
       </div>
     </div>
 
+    <!-- REGRAS APRENDIDAS -->
+    <div id="tab-regras" class="hidden">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Regras aprendidas</div>
+        </div>
+        <div class="topbar-right">
+          <span id="regras-count" class="tx-count"></span>
+        </div>
+      </div>
+      <div class="content">
+        <div class="warn-box">
+          Cada vez que você corrige uma categoria manualmente, o sistema aprende e reclassifica automaticamente todas as transações do mesmo remetente. As regras abaixo são aplicadas em todas as importações futuras.
+        </div>
+        <div class="table-section">
+          <div class="table-header">
+            <h3>Remetentes classificados</h3>
+            <div class="filters">
+              <input type="text" id="search-regras" placeholder="Buscar remetente..." oninput="renderRegras()" style="min-width:200px">
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Remetente</th>
+                <th>Categoria aprendida</th>
+                <th>Origem</th>
+                <th style="text-align:right"></th>
+              </tr></thead>
+              <tbody id="regras-tbody"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="regras-footer"></span></div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -442,7 +482,7 @@ const SUPABASE_URL = 'https://trtebwwzfnnjltbdhpay.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRydGVid3d6Zm5uamx0YmRocGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTQzNTQsImV4cCI6MjA5MDEzMDM1NH0.eOhEEiT7HUvnukX2Vd-YnL9YJ_038z2lwz3nNHw2ej8';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let allTx=[], accounts=[], customCats=[];
+let allTx=[], accounts=[], customCats=[], learnedRules={};
 let unknownQueue=[], currentUnknown=null;
 
 // ── Categorias padrão ─────────────────────────────────────
@@ -471,15 +511,39 @@ function catColor(name){ const c=allCats().find(c=>c.name===name); return c?c.co
 // ── Load from Supabase ────────────────────────────────────
 async function loadAll(){
   try{
-    const [ra,rt,rc]=await Promise.all([
+    const [ra,rt,rc,rr]=await Promise.all([
       sb.from('contas').select('*').order('created_at'),
       sb.from('transacoes').select('*').order('date',{ascending:false}),
       sb.from('categorias').select('*').eq('is_default',false).order('created_at'),
+      sb.from('regras_classificacao').select('*'),
     ]);
     accounts=(ra.data||[]).map(a=>({acctId:a.acct_id,bankId:a.bank_id,bankName:a.bank_name,company:a.company,type:a.type}));
     allTx=(rt.data||[]).map(t=>({id:t.id,acctId:t.acct_id,bankId:t.bank_id,org:t.org,date:t.date,description:t.description,remetente:t.remetente,amount:parseFloat(t.amount),type:t.type,category:t.category,company:t.company}));
     customCats=(rc.data||[]).map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,keywords:c.keywords||[],isDefault:false}));
+    // Carrega regras aprendidas em memória para lookup rápido
+    learnedRules={};
+    (rr.data||[]).forEach(r=>{ learnedRules[r.remetente]=r.category; });
   }catch(e){ toast('Erro ao carregar dados: '+e.message,'error'); }
+}
+
+// ── Aprendizado por regras ────────────────────────────────
+async function learnRule(remetente, category){
+  if(!remetente||remetente==='Outros') return;
+  learnedRules[remetente]=category;
+  // Upsert no banco — incrementa acertos se já existe
+  await sb.from('regras_classificacao').upsert(
+    {remetente, category, acertos:1, ultima_vez:new Date().toISOString()},
+    {onConflict:'remetente', ignoreDuplicates:false}
+  );
+  // Atualiza acertos se já existia
+  await sb.from('regras_classificacao')
+    .update({category, ultima_vez:new Date().toISOString(), acertos:sb.rpc('coalesce',{})})
+    .eq('remetente',remetente);
+}
+
+function classifyByLearned(remetente){
+  if(!remetente) return null;
+  return learnedRules[remetente]||null;
 }
 
 // ── Toast ─────────────────────────────────────────────────
@@ -505,7 +569,8 @@ function parseOFX(text){
     const desc=g('MEMO')||g('NAME')||'Sem descrição';
     const fitid=g('FITID');
     const uniqueId=acctId?`${acctId}_${fitid}`:(fitid||Math.random().toString(36).slice(2));
-    transactions.push({id:uniqueId,acctId,bankId,org,date,description:desc,remetente:extractRemetente(desc),amount:amt,type:amt>=0?'credit':'debit',category:autoCategory(desc,amt),company:''});
+    const rem=extractRemetente(desc);
+    transactions.push({id:uniqueId,acctId,bankId,org,date,description:desc,remetente:rem,amount:amt,type:amt>=0?'credit':'debit',category:autoCategory(desc,amt,rem),company:''});
   }
   return{bankId,acctId,org,transactions};
 }
@@ -519,7 +584,10 @@ function extractRemetente(desc){
   return cleanName(d);
 }
 function cleanName(s){ return s.replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g,'').replace(/\d{2}\/\d{2}/g,'').replace(/\s{2,}/g,' ').replace(/\b\d{4,}\b/g,'').trim().slice(0,50); }
-function autoCategory(desc,amt){
+function autoCategory(desc,amt,remetente){
+  // 1º — regras aprendidas (maior prioridade)
+  if(remetente&&learnedRules[remetente]) return learnedRules[remetente];
+  // 2º — palavras-chave das categorias
   for(const cat of allCats()){
     if(!cat.keywords||!cat.keywords.length) continue;
     for(const kw of cat.keywords){ try{ if(new RegExp(kw,'i').test(desc)) return cat.name; }catch(e){} }
@@ -831,8 +899,28 @@ function renderTxPage(tx){
 function changeTxPage(d){ const tx=getFiltered(); txPage=Math.max(0,Math.min(txPage+d,Math.floor(tx.length/PER))); renderTxPage(tx); }
 async function changeCategory(id,cat){
   const t=allTx.find(t=>t.id===id); if(!t) return;
+  const oldCat=t.category;
   t.category=cat;
+  // Salva no banco
   await sb.from('transacoes').update({category:cat}).eq('id',id);
+  // Aprende a regra se o usuário corrigiu (categoria diferente da anterior)
+  if(cat!==oldCat && t.remetente){
+    learnedRules[t.remetente]=cat;
+    await sb.from('regras_classificacao').upsert(
+      {remetente:t.remetente, category:cat, ultima_vez:new Date().toISOString()},
+      {onConflict:'remetente'}
+    );
+    // Reclassifica todas as outras transações do mesmo remetente que ainda têm a categoria antiga
+    const toUpdate=allTx.filter(tx=>tx.remetente===t.remetente && tx.id!==id && tx.category===oldCat);
+    if(toUpdate.length>0){
+      toUpdate.forEach(tx=>tx.category=cat);
+      await sb.from('transacoes').update({category:cat}).in('id',toUpdate.map(tx=>tx.id));
+      toast(`Regra aprendida! ${toUpdate.length+1} transações de "${t.remetente}" reclassificadas.`,'success');
+      renderTable();
+    } else {
+      toast(`Regra aprendida para "${t.remetente}"`,'success');
+    }
+  }
 }
 
 // ── Análise por categoria ─────────────────────────────────
@@ -871,11 +959,38 @@ function renderCadastro(){
 // ── CSV ───────────────────────────────────────────────────
 function exportCSV(){ const tx=getFiltered(); const rows=[['Data','Descrição','Remetente','Empresa','Conta','Categoria','Valor','Tipo'],...tx.map(t=>[t.date,`"${t.description}"`,`"${t.remetente||''}"`,t.company,t.acctId,t.category,t.amount,t.type])]; const csv=rows.map(r=>r.join(',')).join('\n'); const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='transacoes.csv'; a.click(); }
 
+// ── Regras aprendidas ─────────────────────────────────────
+function renderRegras(){
+  const search=document.getElementById('search-regras').value.toLowerCase();
+  // Combina regras aprendidas + regras de palavras-chave das categorias
+  const learned=Object.entries(learnedRules).map(([rem,cat])=>({remetente:rem,category:cat,origem:'Aprendida'}));
+  const keyword=[];
+  allCats().forEach(c=>{ (c.keywords||[]).forEach(kw=>{ if(kw) keyword.push({remetente:kw,category:c.name,origem:'Palavra-chave'}); }); });
+  const all=[...learned,...keyword].filter(r=>!search||r.remetente.toLowerCase().includes(search)||r.category.toLowerCase().includes(search));
+  document.getElementById('regras-count').textContent=`${Object.keys(learnedRules).length} regras aprendidas`;
+  document.getElementById('regras-footer').textContent=`${all.length} regras no total (aprendidas + palavras-chave)`;
+  document.getElementById('regras-tbody').innerHTML=all.map(r=>`
+    <tr>
+      <td style="font-weight:500">${r.remetente}</td>
+      <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${catColor(r.category)};flex-shrink:0"></span>${r.category}</span></td>
+      <td><span class="badge ${r.origem==='Aprendida'?'badge-green':'badge-gray'}">${r.origem}</span></td>
+      <td style="text-align:right">${r.origem==='Aprendida'?`<button class="btn btn-sm btn-danger" onclick="deleteRule('${r.remetente.replace(/'/g,"\\'")}')">Remover</button>`:''}</td>
+    </tr>`).join('');
+}
+
+async function deleteRule(remetente){
+  delete learnedRules[remetente];
+  await sb.from('regras_classificacao').delete().eq('remetente',remetente);
+  renderRegras();
+  toast('Regra removida');
+}
+
 // ── Tabs ──────────────────────────────────────────────────
-const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','cadastro'];
+const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','regras','cadastro'];
 function showTab(id){
   document.querySelectorAll('.nav-item').forEach((t,i)=>t.classList.toggle('active',TAB_NAMES[i]===id));
   TAB_NAMES.forEach(n=>document.getElementById('tab-'+n).classList.toggle('hidden',n!==id));
+  if(id==='regras') renderRegras();
 }
 
 // ── Drag & Drop ───────────────────────────────────────────
