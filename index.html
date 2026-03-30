@@ -173,6 +173,8 @@ tbody tr:hover td{background:var(--bg)}
 .acct-empty{padding:40px;text-align:center;color:var(--text3);font-size:13px}
 /* Warn box */
 .warn-box{background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:#92400e}
+
+.cat-row:hover td { background: var(--bg); }
 </style>
 </head>
 <body>
@@ -362,8 +364,46 @@ tbody tr:hover td{background:var(--bg)}
             <select id="filter-cat-unidade" onchange="renderAnaliseCat()"><option value="">Todas as unidades</option></select>
           </div>
           <div class="table-section">
-            <div class="table-header"><h3>Despesas por categoria</h3></div>
+            <div class="table-header"><h3>Despesas por categoria</h3><span style="font-size:11px;color:var(--text3)">Clique em uma categoria para ver os lançamentos</span></div>
             <div class="table-wrap"><table><thead><tr><th>Categoria</th><th style="text-align:right">Total despesas</th><th style="text-align:right">% do total</th></tr></thead><tbody id="cat-tbody"></tbody></table></div>
+          </div>
+
+          <!-- Painel de detalhamento da categoria -->
+          <div id="cat-drilldown" class="hidden" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)">
+            <div style="padding:14px 18px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span id="cat-drill-dot" style="width:12px;height:12px;border-radius:50%;flex-shrink:0;display:inline-block"></span>
+                  <span id="cat-drill-title" style="font-size:14px;font-weight:600"></span>
+                </div>
+                <div id="cat-drill-sub" style="font-size:12px;color:var(--text2);margin-top:3px;padding-left:22px"></div>
+              </div>
+              <button class="btn btn-sm" onclick="closeCatDrilldown()">✕ Fechar</button>
+            </div>
+            <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <input type="text" id="cat-drill-search" placeholder="Buscar descrição..." oninput="renderCatDrillTable()" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg2);color:var(--text);min-width:180px">
+                <select id="cat-drill-unidade" onchange="renderCatDrillTable()" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg2);color:var(--text)"><option value="">Todas as unidades</option></select>
+              </div>
+              <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-sm)">
+                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                  <thead style="background:var(--bg)">
+                    <tr>
+                      <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);white-space:nowrap">Data</th>
+                      <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Descrição</th>
+                      <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Empresa</th>
+                      <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Categoria</th>
+                      <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cat-drill-tbody"></tbody>
+                </table>
+              </div>
+              <div id="cat-drill-pag" style="font-size:12px;color:var(--text3);text-align:right;display:flex;align-items:center;justify-content:space-between">
+                <span id="cat-drill-pag-info"></span>
+                <div id="cat-drill-pag-btns" style="display:flex;gap:6px"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -954,7 +994,7 @@ function renderAnaliseCat(){
 
   document.getElementById('cat-tbody').innerHTML=cats.map(c=>{
     const pct=totalDesp>0?byCat[c]/totalDesp*100:0;
-    return`<tr>
+    return`<tr style="cursor:pointer" data-catname="${c}" data-catmes="${mes}" data-catunid="${unid}" class="cat-row">
       <td><span style="width:10px;height:10px;border-radius:50%;background:${catColor(c)};display:inline-block;margin-right:10px;vertical-align:middle"></span>${c}</td>
       <td style="text-align:right" class="amount-neg">${fmt(byCat[c])}</td>
       <td style="text-align:right">
@@ -963,6 +1003,7 @@ function renderAnaliseCat(){
             <div style="height:5px;width:${Math.min(pct,100).toFixed(1)}%;background:${catColor(c)};border-radius:3px"></div>
           </div>
           <span style="min-width:36px;text-align:right;font-weight:500">${pct.toFixed(1)}%</span>
+          <span style="font-size:10px;color:var(--text3)">›</span>
         </div>
       </td>
     </tr>`;
@@ -1018,6 +1059,130 @@ async function deleteRule(remetente){
   toast('Regra removida');
 }
 
+
+// ── Drilldown de categoria ────────────────────────────────
+let catDrillName='', catDrillMes='', catDrillUnid='', catDrillPage=0;
+const CAT_DRILL_PER=50;
+
+function openCatDrilldown(catName, mes, unid){
+  catDrillName=catName; catDrillMes=mes; catDrillUnid=unid; catDrillPage=0;
+  const cc=catColor(catName);
+  document.getElementById('cat-drill-dot').style.background=cc;
+  document.getElementById('cat-drill-title').textContent=catName;
+
+  // Popula filtro de unidade no drilldown
+  const unidSel=document.getElementById('cat-drill-unidade');
+  const curU=unidSel.value;
+  unidSel.innerHTML='<option value="">Todas as unidades</option>';
+  [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
+    const o=document.createElement('option'); o.value=c; o.textContent=c; unidSel.appendChild(o);
+  });
+  if(curU) unidSel.value=curU;
+
+  document.getElementById('cat-drill-search').value='';
+  renderCatDrillTable();
+
+  const panel=document.getElementById('cat-drilldown');
+  panel.classList.remove('hidden');
+  setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
+}
+
+function closeCatDrilldown(){
+  document.getElementById('cat-drilldown').classList.add('hidden');
+}
+
+function getCatDrillTx(){
+  const search=document.getElementById('cat-drill-search').value.toLowerCase();
+  const unidFilt=document.getElementById('cat-drill-unidade').value;
+  return allTx.filter(t=>
+    t.category===catDrillName &&
+    t.amount<0 &&
+    (!catDrillMes||t.date&&t.date.startsWith(catDrillMes)) &&
+    (!unidFilt||t.company===unidFilt) &&
+    (!search||t.description.toLowerCase().includes(search))
+  ).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+
+function renderCatDrillTable(){
+  catDrillPage=0;
+  renderCatDrillPage(getCatDrillTx());
+}
+
+function renderCatDrillPage(txList){
+  const total=txList.length;
+  const totalVal=txList.reduce((s,t)=>s+Math.abs(t.amount),0);
+  document.getElementById('cat-drill-sub').textContent=`${total} lançamentos · Total: ${fmt(totalVal)}`;
+
+  const slice=txList.slice(catDrillPage*CAT_DRILL_PER,(catDrillPage+1)*CAT_DRILL_PER);
+  const cats=allCats();
+  document.getElementById('cat-drill-tbody').innerHTML=slice.map(t=>{
+    const cc=catColor(t.category);
+    return`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 12px;white-space:nowrap;color:var(--text2);font-family:'DM Mono',monospace;font-size:11px">${fmtDate(t.date)}</td>
+      <td style="padding:8px 12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${t.description}">${t.description}</td>
+      <td style="padding:8px 12px;color:var(--text2);font-size:12px;white-space:nowrap">${t.company||'—'}</td>
+      <td style="padding:8px 12px">
+        <select style="font-size:11px;padding:3px 8px;border-radius:20px;border:none;cursor:pointer;background:${cc}18;color:${cc};font-weight:500;max-width:160px"
+          onchange="reclassifyFromDrill('${t.id}',this.value)">
+          ${cats.map(c=>`<option value="${c.name}" ${t.category===c.name?'selected':''} style="background:#fff;color:#333">${c.name}</option>`).join('')}
+        </select>
+      </td>
+      <td style="padding:8px 12px;text-align:right;font-weight:600;color:var(--red);font-family:'DM Mono',monospace;font-size:12px">- ${fmt(t.amount)}</td>
+    </tr>`;
+  }).join('');
+
+  const from=catDrillPage*CAT_DRILL_PER+1, to=Math.min((catDrillPage+1)*CAT_DRILL_PER,total);
+  document.getElementById('cat-drill-pag-info').textContent=total>0?`${from}–${to} de ${total} lançamentos`:'Nenhum lançamento encontrado';
+  document.getElementById('cat-drill-pag-btns').innerHTML=total>CAT_DRILL_PER?
+    `<button class="btn btn-sm" ${catDrillPage===0?'disabled':''} onclick="changeCatDrillPage(-1)">← Anterior</button>
+     <button class="btn btn-sm" ${to>=total?'disabled':''} onclick="changeCatDrillPage(1)">Próximo →</button>`:'';
+}
+
+function changeCatDrillPage(d){
+  const tx=getCatDrillTx();
+  catDrillPage=Math.max(0,Math.min(catDrillPage+d,Math.floor(tx.length/CAT_DRILL_PER)));
+  renderCatDrillPage(tx);
+}
+
+async function reclassifyFromDrill(id, newCat){
+  const t=allTx.find(t=>t.id===id); if(!t) return;
+  const oldCat=t.category;
+  if(newCat===oldCat) return;
+  t.category=newCat;
+
+  // Salva no banco
+  try{ await sb.from('transacoes').update({category:newCat}).eq('id',id); }catch(e){}
+
+  // Aprende a regra
+  if(t.remetente){
+    learnedRules[t.remetente]=newCat;
+    try{
+      await sb.from('regras_classificacao').upsert(
+        {remetente:t.remetente,category:newCat,ultima_vez:new Date().toISOString()},
+        {onConflict:'remetente'}
+      );
+    }catch(e){}
+    // Reclassifica outros da mesma categoria e remetente
+    const outros=allTx.filter(tx=>tx.remetente===t.remetente&&tx.id!==id&&tx.category===oldCat);
+    if(outros.length>0){
+      outros.forEach(tx=>tx.category=newCat);
+      try{ await sb.from('transacoes').update({category:newCat}).in('id',outros.map(tx=>tx.id)); }catch(e){}
+      toast(`Regra aprendida! ${outros.length+1} lançamentos de "${t.remetente}" reclassificados.`,'success');
+    } else {
+      toast(`Lançamento reclassificado para "${newCat}"`, 'success');
+    }
+  }
+
+  // Se o lançamento saiu desta categoria, remove da lista do drilldown
+  if(newCat!==catDrillName){
+    renderCatDrillTable();
+    renderAnaliseCat(); // atualiza totais
+  } else {
+    // Só atualiza a linha
+    renderCatDrillTable();
+  }
+}
+
 // ── Tabs ──────────────────────────────────────────────────
 const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','regras','cadastro'];
 function showTab(id){
@@ -1036,6 +1201,16 @@ document.addEventListener('drop',e=>{ e.preventDefault(); handleFiles(e.dataTran
   document.getElementById('loader').style.display='none';
   refresh();
 })();
+
+// Event delegation para cliques nas linhas de categoria
+document.addEventListener('click', function(e){
+  const row = e.target.closest && e.target.closest('.cat-row');
+  if(!row) return;
+  const catName = row.getAttribute('data-catname');
+  const mes     = row.getAttribute('data-catmes')  || '';
+  const unid    = row.getAttribute('data-catunid') || '';
+  if(catName) openCatDrilldown(catName, mes, unid);
+});
 </script>
 </body>
 </html>
