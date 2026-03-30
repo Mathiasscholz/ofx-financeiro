@@ -268,9 +268,9 @@ tbody tr:hover td{background:var(--bg)}
             <div class="filter-group"><label>Unidade</label><select id="dash-unidade" onchange="renderDashboard()"><option value="">Todas</option></select></div>
           </div>
           <div class="metrics-row" id="metrics-row"></div>
-          <div class="charts-grid">
+          <div class="charts-grid" style="grid-template-columns:1fr">
             <div class="chart-card"><div class="chart-title">Fluxo mensal</div><div class="legend-row" id="legend-fluxo"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-fluxo"></canvas></div></div>
-            <div class="chart-card"><div class="chart-title">Despesas por categoria</div><div class="legend-row" id="legend-cat"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-cat"></canvas></div></div>
+            
           </div>
         </div>
       </div>
@@ -357,10 +357,13 @@ tbody tr:hover td{background:var(--bg)}
       <div class="content">
         <div id="no-data-cat" class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><h3>Sem dados</h3><p>Importe arquivos OFX para ver análise por categoria</p></div>
         <div id="cat-content" class="hidden">
-          <div class="chart-card chart-card-full"><div class="chart-title">Gastos por categoria</div><div class="chart-wrap" style="height:260px"><canvas id="chart-cat-bar"></canvas></div></div>
+          <div class="filters" style="margin-bottom:4px">
+            <select id="filter-cat-mes" onchange="renderAnaliseCat()"><option value="">Todos os meses</option></select>
+            <select id="filter-cat-unidade" onchange="renderAnaliseCat()"><option value="">Todas as unidades</option></select>
+          </div>
           <div class="table-section">
-            <div class="table-header"><h3>Resumo</h3></div>
-            <div class="table-wrap"><table><thead><tr><th>Categoria</th><th style="text-align:right">Despesas</th><th style="text-align:right">Receitas</th><th style="text-align:right">Saldo</th><th>Proporção</th></tr></thead><tbody id="cat-tbody"></tbody></table></div>
+            <div class="table-header"><h3>Despesas por categoria</h3></div>
+            <div class="table-wrap"><table><thead><tr><th>Categoria</th><th style="text-align:right">Total despesas</th><th style="text-align:right">% do total</th></tr></thead><tbody id="cat-tbody"></tbody></table></div>
           </div>
         </div>
       </div>
@@ -772,15 +775,7 @@ function renderDashboard(){
   destroyChart(cFluxo);
   cFluxo=new Chart(document.getElementById('chart-fluxo'),{type:'bar',data:{labels:mLabels,datasets:[{label:'Entradas',data:months.map(m=>+byMonth[m].in.toFixed(2)),backgroundColor:'rgba(26,122,94,.75)',borderRadius:5},{label:'Saídas',data:months.map(m=>+byMonth[m].out.toFixed(2)),backgroundColor:'rgba(192,57,43,.7)',borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10,family:'DM Sans'}},grid:{display:false}},y:{ticks:{color:tc,font:{size:10,family:'DM Sans'},callback:v=>v>=1000?'R$'+(v/1000).toFixed(0)+'k':'R$'+v},grid:{color:gc}}}}});
   document.getElementById('legend-fluxo').innerHTML=`<span class="legend-item"><span class="legend-sq" style="background:rgba(26,122,94,.75)"></span>Entradas</span><span class="legend-item"><span class="legend-sq" style="background:rgba(192,57,43,.7)"></span>Saídas</span>`;
-  const byCat={};
-  tx.filter(t=>t.amount<0).forEach(t=>{ byCat[t.category]=(byCat[t.category]||0)+Math.abs(t.amount); });
-  const catKeys=Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]).slice(0,8);
-  const catVals=catKeys.map(k=>+byCat[k].toFixed(2));
-  const catCols=catKeys.map(k=>catColor(k));
-  destroyChart(cCat);
-  cCat=new Chart(document.getElementById('chart-cat'),{type:'doughnut',data:{labels:catKeys,datasets:[{data:catVals,backgroundColor:catCols,borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed)}}}}});
-  const total=catVals.reduce((s,v)=>s+v,0);
-  document.getElementById('legend-cat').innerHTML=catKeys.map((k,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${catCols[i]}"></span>${k} ${total?Math.round(byCat[k]/total*100)+'%':''}</span>`).join('');
+  // Pizza de categorias removida do dashboard
 }
 
 // ── Remetentes ────────────────────────────────────────────
@@ -923,15 +918,55 @@ async function changeCategory(id,cat){
 
 // ── Análise por categoria ─────────────────────────────────
 function renderAnaliseCat(){
+  const mesSel=document.getElementById('filter-cat-mes');
+  const unidSel=document.getElementById('filter-cat-unidade');
+  const curMes=mesSel?mesSel.value:''; const curUnid=unidSel?unidSel.value:'';
+
+  // Popula filtros
+  if(mesSel){
+    mesSel.innerHTML='<option value="">Todos os meses</option>';
+    [...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort().forEach(m=>{
+      const[y,mo]=m.split('-'); const o=document.createElement('option'); o.value=m;
+      o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
+      mesSel.appendChild(o);
+    });
+    if(curMes) mesSel.value=curMes;
+  }
+  if(unidSel){
+    unidSel.innerHTML='<option value="">Todas as unidades</option>';
+    [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
+      const o=document.createElement('option'); o.value=c; o.textContent=c; unidSel.appendChild(o);
+    });
+    if(curUnid) unidSel.value=curUnid;
+  }
+
+  const mes=curMes; const unid=curUnid;
+  const txFilt=allTx.filter(t=>
+    t.amount<0 &&
+    (!mes||t.date&&t.date.startsWith(mes)) &&
+    (!unid||t.company===unid)
+  );
+
   const byCat={};
-  allCats().forEach(c=>byCat[c.name]={deb:0,cred:0});
-  allTx.forEach(t=>{ if(!byCat[t.category]) byCat[t.category]={deb:0,cred:0}; if(t.amount<0) byCat[t.category].deb+=Math.abs(t.amount); else byCat[t.category].cred+=t.amount; });
-  const usedCats=Object.keys(byCat).filter(c=>byCat[c].deb+byCat[c].cred>0).sort((a,b)=>byCat[b].deb-byCat[a].deb);
-  const maxDeb=Math.max(...usedCats.map(c=>byCat[c].deb),1);
-  document.getElementById('cat-tbody').innerHTML=usedCats.map(c=>`<tr><td><span style="width:10px;height:10px;border-radius:50%;background:${catColor(c)};display:inline-block;margin-right:10px;vertical-align:middle"></span>${c}</td><td style="text-align:right" class="amount-neg">${byCat[c].deb?fmt(byCat[c].deb):'—'}</td><td style="text-align:right" class="amount-pos">${byCat[c].cred?fmt(byCat[c].cred):'—'}</td><td style="text-align:right" class="${byCat[c].cred-byCat[c].deb>=0?'amount-pos':'amount-neg'}">${fmtS(byCat[c].cred-byCat[c].deb)}</td><td style="width:120px"><div class="progress-bar"><div class="progress-fill" style="width:${Math.round(byCat[c].deb/maxDeb*100)}%;background:${catColor(c)}"></div></div></td></tr>`).join('');
-  const tc='#9c9b96',gc='rgba(0,0,0,0.05)';
-  destroyChart(cCatBar);
-  cCatBar=new Chart(document.getElementById('chart-cat-bar'),{type:'bar',data:{labels:usedCats,datasets:[{data:usedCats.map(c=>+byCat[c].deb.toFixed(2)),backgroundColor:usedCats.map(c=>catColor(c)),borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10,family:'DM Sans'},maxRotation:40,autoSkip:false},grid:{display:false}},y:{ticks:{color:tc,font:{size:10,family:'DM Sans'},callback:v=>'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v)},grid:{color:gc}}}}});
+  txFilt.forEach(t=>{ if(!byCat[t.category]) byCat[t.category]=0; byCat[t.category]+=Math.abs(t.amount); });
+  const totalDesp=Object.values(byCat).reduce((s,v)=>s+v,0);
+  const cats=Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
+
+  document.getElementById('cat-tbody').innerHTML=cats.map(c=>{
+    const pct=totalDesp>0?byCat[c]/totalDesp*100:0;
+    return`<tr>
+      <td><span style="width:10px;height:10px;border-radius:50%;background:${catColor(c)};display:inline-block;margin-right:10px;vertical-align:middle"></span>${c}</td>
+      <td style="text-align:right" class="amount-neg">${fmt(byCat[c])}</td>
+      <td style="text-align:right">
+        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+          <div style="width:80px;height:5px;background:var(--color-background-tertiary,#eee);border-radius:3px;overflow:hidden">
+            <div style="height:5px;width:${Math.min(pct,100).toFixed(1)}%;background:${catColor(c)};border-radius:3px"></div>
+          </div>
+          <span style="min-width:36px;text-align:right;font-weight:500">${pct.toFixed(1)}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Empresas ──────────────────────────────────────────────
