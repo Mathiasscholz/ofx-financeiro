@@ -1,4 +1,57 @@
-<!DOCTYPE html>
+id="tab-regras" class="hidden">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Regras aprendidas</div>
+        </div>
+        <div class="topbar-right">
+          <span id="regras-count" class="tx-count"></span>
+          <button class="btn btn-primary" onclick="openAddIgnored()">+ Exceção de remetente</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="warn-box">
+          Cada vez que você corrige uma categoria, o sistema aprende e aplica automaticamente nas próximas importações. Remetentes na lista de <strong>exceções</strong> nunca têm regra automática salva — você classifica manualmente cada vez.
+        </div>
+
+        <!-- Regras aprendidas -->
+        <div class="table-section">
+          <div class="table-header">
+            <h3>Regras aprendidas</h3>
+            <div class="filters">
+              <input type="text" id="search-regras" placeholder="Buscar remetente..." oninput="renderRegras()" style="min-width:200px">
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr>
+              <th>Remetente</th>
+              <th>Categoria</th>
+              <th>Tipo</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="regras-tbody"></tbody></table>
+          </div>
+          <div class="table-footer"><span id="regras-footer"></span></div>
+        </div>
+
+        <!-- Exceções -->
+        <div class="table-section">
+          <div class="table-header">
+            <h3>Exceções — nunca aprender</h3>
+            <span style="font-size:11px;color:var(--text3)">Estes remetentes são classificados manualmente, sem propagação automática</span>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr>
+              <th>Remetente</th>
+              <th>Motivo</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="ignored-tbody"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -545,8 +598,7 @@ const SUPABASE_URL = 'https://trtebwwzfnnjltbdhpay.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRydGVid3d6Zm5uamx0YmRocGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTQzNTQsImV4cCI6MjA5MDEzMDM1NH0.eOhEEiT7HUvnukX2Vd-YnL9YJ_038z2lwz3nNHw2ej8';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let allTx=[], accounts=[], customCats=[], learnedRules={}, learnedRangeRules={};
-// learnedRangeRules: { remetente: [{min,max,category}] }
+let allTx=[], accounts=[], customCats=[], learnedRules={}, ignoredRemetentes=new Set();
 let unknownQueue=[], currentUnknown=null;
 
 // ── Categorias padrão ─────────────────────────────────────
@@ -575,12 +627,10 @@ async function loadAll(){
     allTx=(rt.data||[]).map(t=>({id:t.id,acctId:t.acct_id,bankId:t.bank_id,org:t.org,date:t.date,description:t.description,remetente:t.remetente,amount:parseFloat(t.amount),type:t.type,category:t.category,company:t.company}));
     customCats=(rc.data||[]).map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,keywords:c.keywords||[],isDefault:false}));
     // Carrega regras aprendidas em memória para lookup rápido
-    learnedRules={}; learnedRangeRules={};
+    learnedRules={}; ignoredRemetentes=new Set();
     (rr.data||[]).forEach(r=>{
-      if(r.valor_min!==null||r.valor_max!==null){
-        // Regra por faixa de valor
-        if(!learnedRangeRules[r.remetente]) learnedRangeRules[r.remetente]=[];
-        learnedRangeRules[r.remetente].push({min:r.valor_min,max:r.valor_max,category:r.category});
+      if(r.category==='__ignorar__'){
+        ignoredRemetentes.add(r.remetente);
       } else {
         learnedRules[r.remetente]=r.category;
       }
@@ -647,15 +697,13 @@ function extractRemetente(desc){
 }
 function cleanName(s){ return s.replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g,'').replace(/\d{2}\/\d{2}/g,'').replace(/\s{2,}/g,' ').replace(/\b\d{4,}\b/g,'').trim().slice(0,50); }
 function autoCategory(desc,amt,remetente){
-  const absAmt=Math.abs(amt);
-  // 1º — regras por faixa de valor (prioridade máxima para remetentes ambíguos)
-  if(remetente&&learnedRangeRules[remetente]){
-    const ranges=learnedRangeRules[remetente];
-    for(const r of ranges){
-      const okMin=r.min===null||absAmt>=r.min;
-      const okMax=r.max===null||absAmt<=r.max;
-      if(okMin&&okMax) return r.category;
+  // 1º — remetente na lista de exceções → não aplica regra, classifica só por palavra-chave
+  if(remetente&&ignoredRemetentes.has(remetente)){
+    for(const cat of allCats()){
+      if(!cat.keywords||!cat.keywords.length) continue;
+      for(const kw of cat.keywords){ try{ if(new RegExp(kw,'i').test(desc)) return cat.name; }catch(e){} }
     }
+    return amt>=0?'Receitas diversas':'Outras despesas';
   }
   // 2º — regras aprendidas simples
   if(remetente&&learnedRules[remetente]) return learnedRules[remetente];
@@ -721,7 +769,7 @@ function skipUnknown(){ document.getElementById('modal-unknown').classList.add('
 function openClearModal(){
   document.getElementById('ci-tx').textContent=allTx.length.toLocaleString('pt-BR');
   document.getElementById('ci-ac').textContent=accounts.length;
-  const totalRegras=Object.keys(learnedRules).length+Object.values(learnedRangeRules).reduce((s,r)=>s+r.length,0);
+  const totalRegras=Object.keys(learnedRules).length;
   document.getElementById('ci-rg').textContent=totalRegras;
   document.getElementById('modal-clear').classList.remove('hidden');
 }
@@ -978,8 +1026,8 @@ async function changeCategory(id,cat){
   t.category=cat;
   // Salva no banco
   await sb.from('transacoes').update({category:cat}).eq('id',id);
-  // Aprende a regra se o usuário corrigiu (categoria diferente da anterior)
-  if(cat!==oldCat && t.remetente){
+  // Aprende a regra se o usuário corrigiu (exceto remetentes na lista de exceções)
+  if(cat!==oldCat && t.remetente && !ignoredRemetentes.has(t.remetente)){
     learnedRules[t.remetente]=cat;
     await sb.from('regras_classificacao').upsert(
       {remetente:t.remetente, category:cat, ultima_vez:new Date().toISOString()},
@@ -1077,82 +1125,46 @@ function exportCSV(){ const tx=getFiltered(); const rows=[['Data','Descrição',
 
 // ── Regras aprendidas ─────────────────────────────────────
 
-// ── Regras por faixa de valor ─────────────────────────────
-async function saveRangeRule(remetente, min, max, category){
-  if(!remetente) return;
-  // Garante array
-  if(!learnedRangeRules[remetente]) learnedRangeRules[remetente]=[];
-  // Remove regra simples para esse remetente (não mistura)
-  delete learnedRules[remetente];
-  // Adiciona/atualiza na memória
-  const existing=learnedRangeRules[remetente].findIndex(r=>r.min===min&&r.max===max);
-  if(existing>=0) learnedRangeRules[remetente][existing].category=category;
-  else learnedRangeRules[remetente].push({min,max,category});
-  // Salva no banco com chave única remetente+min+max
-  const key=`${remetente}|${min??''}|${max??''}`;
-  await sb.from('regras_classificacao').upsert(
-    {remetente:key, category, valor_min:min, valor_max:max,
-     ultima_vez:new Date().toISOString()},
-    {onConflict:'remetente'}
-  );
-}
-
-async function deleteRangeRule(remetente, min, max){
-  if(!learnedRangeRules[remetente]) return;
-  learnedRangeRules[remetente]=learnedRangeRules[remetente].filter(r=>!(r.min===min&&r.max===max));
-  if(!learnedRangeRules[remetente].length) delete learnedRangeRules[remetente];
-  const key=`${remetente}|${min??''}|${max??''}`;
-  await sb.from('regras_classificacao').delete().eq('remetente',key);
-  renderRegras();
-  toast('Regra de faixa removida');
-}
-
-function fmtFaixa(min, max){
-  if(min!==null&&max!==null) return `R$ ${min.toLocaleString('pt-BR')} – R$ ${max.toLocaleString('pt-BR')}`;
-  if(min!==null) return `Acima de R$ ${min.toLocaleString('pt-BR')}`;
-  if(max!==null) return `Até R$ ${max.toLocaleString('pt-BR')}`;
-  return 'Qualquer valor';
-}
-
-function renderRegras(search=''){
-  const searchEl=document.getElementById('search-regras');
-  const s=(searchEl?searchEl.value:search).toLowerCase();
-
-  const learned=Object.entries(learnedRules).map(([rem,cat])=>({remetente:rem,category:cat,tipo:'simples',min:null,max:null}));
-  const ranged=[];
-  Object.entries(learnedRangeRules).forEach(([rem,rules])=>{
-    rules.forEach(r=>ranged.push({remetente:rem,category:r.category,tipo:'faixa',min:r.min,max:r.max}));
-  });
+function renderRegras(){
+  const s=(document.getElementById('search-regras').value||'').toLowerCase();
+  const learned=Object.entries(learnedRules)
+    .filter(([rem])=>!s||rem.toLowerCase().includes(s))
+    .map(([rem,cat])=>({remetente:rem,category:cat}));
   const keyword=[];
-  allCats().forEach(c=>{ (c.keywords||[]).forEach(kw=>{ if(kw) keyword.push({remetente:kw,category:c.name,tipo:'keyword',min:null,max:null}); }); });
+  allCats().forEach(c=>{ (c.keywords||[]).forEach(kw=>{ if(kw&&(!s||kw.toLowerCase().includes(s)||c.name.toLowerCase().includes(s))) keyword.push({remetente:kw,category:c.name}); }); });
 
-  const all=[...ranged,...learned,...keyword].filter(r=>
-    !s||r.remetente.toLowerCase().includes(s)||r.category.toLowerCase().includes(s)
-  );
+  const totalAprendidas=Object.keys(learnedRules).length;
+  document.getElementById('regras-count').textContent=`${totalAprendidas} regras · ${ignoredRemetentes.size} exceções`;
+  document.getElementById('regras-footer').textContent=`${learned.length+keyword.length} exibidas`;
 
-  const totalAprendidas=Object.keys(learnedRules).length+ranged.length;
-  document.getElementById('regras-count').textContent=`${totalAprendidas} regras aprendidas`;
-  document.getElementById('regras-footer').textContent=`${all.length} regras no total`;
+  // Tabela de regras aprendidas
+  document.getElementById('regras-tbody').innerHTML=[...learned,...keyword].length===0?
+    `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma regra encontrada.</td></tr>`:
+    [...learned.map(r=>`
+      <tr>
+        <td style="font-weight:500;font-size:12px">${r.remetente}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${catColor(r.category)};flex-shrink:0"></span>${r.category}</span></td>
+        <td><span class="badge badge-green">Aprendida</span></td>
+        <td style="text-align:right"><button class="btn btn-sm btn-danger" onclick="deleteRule('${r.remetente.replace(/'/g,"\'")}')">Remover</button></td>
+      </tr>`),
+    ...keyword.map(r=>`
+      <tr>
+        <td style="font-size:12px;color:var(--text2)">${r.remetente}</td>
+        <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${catColor(r.category)};flex-shrink:0"></span>${r.category}</span></td>
+        <td><span class="badge badge-gray">Palavra-chave</span></td>
+        <td></td>
+      </tr>`)
+    ].join('');
 
-  document.getElementById('regras-tbody').innerHTML=all.length===0?
-    `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhuma regra encontrada.</td></tr>`:
-    all.map(r=>{
-      const isFaixa=r.tipo==='faixa';
-      const isAprendida=r.tipo==='simples'||isFaixa;
-      const remEsc=r.remetente.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      return`<tr>
-        <td style="font-weight:500;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.remetente}</td>
-        <td><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${catColor(r.category)};flex-shrink:0"></span>${r.category}</span></td>
-        <td style="font-size:11px;color:var(--text2)">${isFaixa?`<span class="badge badge-blue">Faixa: ${fmtFaixa(r.min,r.max)}</span>`:''}</td>
-        <td><span class="badge ${isAprendida?(isFaixa?'badge-blue':'badge-green'):'badge-gray'}">${r.tipo==='keyword'?'Palavra-chave':isFaixa?'Faixa de valor':'Aprendida'}</span></td>
-        <td style="text-align:right">
-          ${isAprendida?(isFaixa?
-            `<button class="btn btn-sm btn-danger" onclick="deleteRangeRule('${remEsc}',${r.min},${r.max})">Remover</button>`:
-            `<button class="btn btn-sm btn-danger" onclick="deleteRule('${remEsc}')">Remover</button>`
-          ):''}
-        </td>
-      </tr>`;
-    }).join('');
+  // Tabela de exceções
+  document.getElementById('ignored-tbody').innerHTML=ignoredRemetentes.size===0?
+    `<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma exceção cadastrada.</td></tr>`:
+    [...ignoredRemetentes].filter(r=>!s||r.toLowerCase().includes(s)).map(rem=>`
+      <tr>
+        <td style="font-weight:500;font-size:12px">${rem}</td>
+        <td style="font-size:12px;color:var(--text2)">Classificação manual — sem aprendizado automático</td>
+        <td style="text-align:right"><button class="btn btn-sm btn-danger" onclick="removeIgnored('${rem.replace(/'/g,"\'")}')">Remover</button></td>
+      </tr>`).join('');
 }
 
 
@@ -1257,8 +1269,8 @@ async function reclassifyFromDrill(id, newCat){
   // Salva no banco
   try{ await sb.from('transacoes').update({category:newCat}).eq('id',id); }catch(e){}
 
-  // Aprende a regra
-  if(t.remetente){
+  // Aprende a regra (exceto remetentes na lista de exceções)
+  if(t.remetente && !ignoredRemetentes.has(t.remetente)){
     learnedRules[t.remetente]=newCat;
     try{
       await sb.from('regras_classificacao').upsert(
@@ -1288,73 +1300,51 @@ async function reclassifyFromDrill(id, newCat){
 }
 
 
-// ── Modal nova regra por faixa ────────────────────────────
-function openNewRangeRule(){
-  // Popula categorias no select
-  const sel=document.getElementById('rr-cat');
-  sel.innerHTML=allCats().map(c=>`<option value="${c.name}">${c.name}</option>`).join('');
-  document.getElementById('rr-remetente').value='';
-  document.getElementById('rr-min').value='';
-  document.getElementById('rr-max').value='';
-  updateRangePreview();
-  document.getElementById('modal-range-rule').classList.remove('hidden');
-}
 
-function closeRangeRuleModal(){
-  document.getElementById('modal-range-rule').classList.add('hidden');
-}
-
-function updateRangePreview(){
-  const rem=document.getElementById('rr-remetente').value.trim();
-  const min=document.getElementById('rr-min').value!==''?parseFloat(document.getElementById('rr-min').value):null;
-  const max=document.getElementById('rr-max').value!==''?parseFloat(document.getElementById('rr-max').value):null;
-  const cat=document.getElementById('rr-cat').value;
-  if(!rem){ document.getElementById('rr-preview').textContent='Preencha o remetente para ver o resumo.'; return; }
-  const faixa=fmtFaixa(min,max);
-  document.getElementById('rr-preview').innerHTML=
-    `<strong>Quando encontrar:</strong> "${rem}"<br>
-     <strong>Com valor:</strong> ${faixa}<br>
-     <strong>Classificar como:</strong> <span style="color:${catColor(cat)};font-weight:600">${cat}</span>`;
-}
-
-// Atualiza preview ao digitar
-['rr-remetente','rr-min','rr-max','rr-cat'].forEach(id=>{
-  const el=document.getElementById(id);
-  if(el) el.addEventListener('input', updateRangePreview);
-});
-
-async function confirmSaveRangeRule(){
-  const rem=document.getElementById('rr-remetente').value.trim();
-  const minVal=document.getElementById('rr-min').value;
-  const maxVal=document.getElementById('rr-max').value;
-  const cat=document.getElementById('rr-cat').value;
-  if(!rem){ document.getElementById('rr-remetente').focus(); return; }
-  if(minVal===''&&maxVal===''){ toast('Defina ao menos um valor mínimo ou máximo','error'); return; }
-  const min=minVal!==''?parseFloat(minVal):null;
-  const max=maxVal!==''?parseFloat(maxVal):null;
-  if(min!==null&&max!==null&&min>=max){ toast('Valor mínimo deve ser menor que o máximo','error'); return; }
-
-  await saveRangeRule(rem, min, max, cat);
-
-  // Reclassifica transações existentes que se enquadram na faixa
-  const affected=allTx.filter(t=>{
-    const abs=Math.abs(t.amount);
-    const remMatch=t.remetente&&t.remetente.toLowerCase().includes(rem.toLowerCase());
-    const minOk=min===null||abs>=min;
-    const maxOk=max===null||abs<=max;
-    return remMatch&&minOk&&maxOk;
-  });
-  if(affected.length>0){
-    affected.forEach(t=>t.category=cat);
-    await sb.from('transacoes').update({category:cat}).in('id',affected.map(t=>t.id));
-    toast(`Regra salva! ${affected.length} transações reclassificadas.`,'success');
-  } else {
-    toast('Regra salva! Será aplicada nas próximas importações.','success');
+// ── Exceções de remetente ─────────────────────────────────
+async function addIgnored(remetente, motivo=''){
+  ignoredRemetentes.add(remetente);
+  // Remove regra aprendida se existia para esse remetente
+  if(learnedRules[remetente]){
+    delete learnedRules[remetente];
+    await sb.from('regras_classificacao').delete().eq('remetente',remetente);
   }
-
-  closeRangeRuleModal();
+  // Salva exceção com category='__ignorar__'
+  await sb.from('regras_classificacao').upsert(
+    {remetente, category:'__ignorar__', ultima_vez:new Date().toISOString()},
+    {onConflict:'remetente'}
+  );
+  toast(`"${remetente}" adicionado às exceções`,'success');
   renderRegras();
-  if(allTx.length>0) renderTable();
+}
+
+async function removeIgnored(remetente){
+  ignoredRemetentes.delete(remetente);
+  await sb.from('regras_classificacao').delete().eq('remetente',remetente);
+  renderRegras();
+  toast('Exceção removida');
+}
+
+function openAddIgnored(){
+  // Popula o datalist com remetentes já usados nas transações
+  const dl=document.getElementById('ignored-datalist');
+  if(dl){
+    const rems=[...new Set(allTx.map(t=>t.remetente).filter(Boolean))].sort();
+    dl.innerHTML=rems.map(r=>`<option value="${r}">`).join('');
+  }
+  document.getElementById('ignored-input').value='';
+  document.getElementById('modal-ignored').classList.remove('hidden');
+}
+
+function closeIgnoredModal(){
+  document.getElementById('modal-ignored').classList.add('hidden');
+}
+
+async function confirmAddIgnored(){
+  const rem=document.getElementById('ignored-input').value.trim();
+  if(!rem){ document.getElementById('ignored-input').focus(); return; }
+  await addIgnored(rem);
+  closeIgnoredModal();
 }
 
 // ── Tabs ──────────────────────────────────────────────────
@@ -1404,6 +1394,23 @@ document.addEventListener('click', function(e){
     <div class="modal-actions">
       <button class="btn" onclick="closeRangeRuleModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmSaveRangeRule()">Salvar regra</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL exceção de remetente -->
+<div class="modal-overlay hidden" id="modal-ignored">
+  <div class="modal">
+    <h2>Adicionar exceção de remetente</h2>
+    <p style="font-size:12px;color:var(--text2);line-height:1.6">Remetentes na lista de exceções <strong>nunca têm regra automática salva</strong>. Você classifica cada lançamento manualmente, sem que o sistema propague para outros lançamentos do mesmo remetente.<br><br>Ideal para: Receita Federal, GPS, DARF e outros pagadores que representam naturezas diferentes.</p>
+    <div class="field">
+      <label>Remetente (como aparece no extrato)</label>
+      <input id="ignored-input" list="ignored-datalist" placeholder="Digite ou selecione um remetente..." autocomplete="off">
+      <datalist id="ignored-datalist"></datalist>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeIgnoredModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmAddIgnored()">Adicionar exceção</button>
     </div>
   </div>
 </div>
