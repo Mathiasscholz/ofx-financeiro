@@ -481,9 +481,24 @@ tbody tr:hover td{background:var(--bg)}
 <div class="modal-overlay hidden" id="modal-clear">
   <div class="modal">
     <h2>Limpar dados</h2>
-    <div class="modal-info"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Transações salvas</span><strong id="ci-tx">—</strong></div><div style="display:flex;justify-content:space-between"><span>Contas cadastradas</span><strong id="ci-ac">—</strong></div></div>
-    <div class="warn-box">Após limpar, reimporte os arquivos OFX. Os dados são apagados permanentemente do banco.</div>
-    <div class="modal-actions"><button class="btn" onclick="closeClearModal()">Cancelar</button><button class="btn btn-danger" onclick="clearOnlyTx()">Só transações</button><button class="btn btn-danger" onclick="clearAll()">Limpar tudo</button></div>
+    <div class="modal-info">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Transações importadas</span><strong id="ci-tx">—</strong></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Contas cadastradas</span><strong id="ci-ac">—</strong></div>
+      <div style="display:flex;justify-content:space-between"><span>Regras aprendidas</span><strong id="ci-rg">—</strong></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="background:var(--green-bg);border:1px solid var(--green);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--green)">
+        <strong>Só transações OFX</strong><br>Remove apenas os lançamentos importados. Contas cadastradas e regras aprendidas são preservadas.
+      </div>
+      <div style="background:var(--red-bg);border:1px solid rgba(192,57,43,.3);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--red)">
+        <strong>Transações + Contas</strong><br>Remove lançamentos e cadastro de contas. As regras aprendidas são preservadas.
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeClearModal()">Cancelar</button>
+      <button class="btn btn-danger" onclick="clearOnlyTx()">Só transações OFX</button>
+      <button class="btn btn-danger" onclick="clearAll()">Transações + Contas</button>
+    </div>
   </div>
 </div>
 
@@ -703,9 +718,15 @@ async function saveUnknown(){
 function skipUnknown(){ document.getElementById('modal-unknown').classList.add('hidden'); currentUnknown=null; processNextUnknown(); }
 
 // ── Limpar ────────────────────────────────────────────────
-function openClearModal(){ document.getElementById('ci-tx').textContent=allTx.length.toLocaleString('pt-BR'); document.getElementById('ci-ac').textContent=accounts.length; document.getElementById('modal-clear').classList.remove('hidden'); }
+function openClearModal(){
+  document.getElementById('ci-tx').textContent=allTx.length.toLocaleString('pt-BR');
+  document.getElementById('ci-ac').textContent=accounts.length;
+  const totalRegras=Object.keys(learnedRules).length+Object.values(learnedRangeRules).reduce((s,r)=>s+r.length,0);
+  document.getElementById('ci-rg').textContent=totalRegras;
+  document.getElementById('modal-clear').classList.remove('hidden');
+}
 function closeClearModal(){ document.getElementById('modal-clear').classList.add('hidden'); }
-async function clearOnlyTx(){ await sb.from('transacoes').delete().neq('id','__none__'); allTx=[]; closeClearModal(); refresh(); toast('Transações apagadas','success'); }
+async function clearOnlyTx(){ await sb.from('transacoes').delete().neq('id','__none__'); allTx=[]; closeClearModal(); refresh(); toast('Transações apagadas. Contas e regras preservadas.','success'); }
 async function clearAll(){ await sb.from('transacoes').delete().neq('id','__none__'); await sb.from('contas').delete().neq('id','00000000-0000-0000-0000-000000000000'); allTx=[]; accounts=[]; closeClearModal(); refresh(); toast('Dados apagados','success'); }
 
 // ── Contas ────────────────────────────────────────────────
