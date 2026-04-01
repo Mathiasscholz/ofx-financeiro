@@ -462,7 +462,6 @@ tbody tr:hover td{background:var(--bg)}
               <thead><tr>
                 <th>Remetente</th>
                 <th>Categoria</th>
-                <th>Faixa de valor</th>
                 <th>Tipo</th>
                 <th></th>
               </tr></thead>
@@ -471,6 +470,25 @@ tbody tr:hover td{background:var(--bg)}
           </div>
           <div class="table-footer"><span id="regras-footer"></span></div>
         </div>
+
+        <!-- Seção de Exceções -->
+        <div class="table-section">
+          <div class="table-header">
+            <h3>Exceções — nunca aprender</h3>
+            <span style="font-size:11px;color:var(--text3)">Estes remetentes são classificados manualmente, sem propagação automática</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Remetente</th>
+                <th>Observação</th>
+                <th style="text-align:right"></th>
+              </tr></thead>
+              <tbody id="ignored-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1104,13 +1122,17 @@ function renderRegras(){
     ].join('');
 
   // Tabela de exceções
-  document.getElementById('ignored-tbody').innerHTML=ignoredRemetentes.size===0?
-    `<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma exceção cadastrada.</td></tr>`:
-    [...ignoredRemetentes].filter(r=>!s||r.toLowerCase().includes(s)).map(rem=>`
+  const filteredIgnored=[...ignoredRemetentes].filter(r=>!s||r.toLowerCase().includes(s));
+  document.getElementById('ignored-tbody').innerHTML=filteredIgnored.length===0?
+    `<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--text3);font-size:12px">${ignoredRemetentes.size===0?'Nenhuma exceção cadastrada.':'Nenhuma exceção encontrada para esta busca.'}</td></tr>`:
+    filteredIgnored.map(rem=>`
       <tr>
         <td style="font-weight:500;font-size:12px">${rem}</td>
-        <td style="font-size:12px;color:var(--text2)">Classificação manual — sem aprendizado automático</td>
-        <td style="text-align:right"><button class="btn btn-sm btn-danger" onclick="removeIgnored('${rem.replace(/'/g,"\'")}')">Remover</button></td>
+        <td><span class="badge badge-gray" style="font-size:10px">Classificação manual · sem aprendizado</span></td>
+        <td style="text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end">
+          <button class="btn btn-sm" onclick="editIgnored('${rem.replace(/\/g,'\\').replace(/'/g,"\'")}')">Editar</button>
+          <button class="btn btn-sm btn-danger" onclick="removeIgnored('${rem.replace(/\/g,'\\').replace(/'/g,"\'")}')">Remover</button>
+        </td>
       </tr>`).join('');
 }
 
@@ -1285,11 +1307,31 @@ function openAddIgnored(){
 
 function closeIgnoredModal(){
   document.getElementById('modal-ignored').classList.add('hidden');
+  document.getElementById('modal-ignored-title').textContent='Adicionar exceção de remetente';
+  document.getElementById('ignored-editing').value='';
+}
+
+function editIgnored(rem){
+  // Abre o modal preenchido com o nome atual para edição
+  const dl=document.getElementById('ignored-datalist');
+  if(dl){
+    const rems=[...new Set(allTx.map(t=>t.remetente).filter(Boolean))].sort();
+    dl.innerHTML=rems.map(r=>`<option value="${r}">`).join('');
+  }
+  document.getElementById('ignored-input').value=rem;
+  document.getElementById('ignored-editing').value=rem; // guarda o nome original
+  document.getElementById('modal-ignored-title').textContent='Editar exceção de remetente';
+  document.getElementById('modal-ignored').classList.remove('hidden');
 }
 
 async function confirmAddIgnored(){
   const rem=document.getElementById('ignored-input').value.trim();
+  const editing=document.getElementById('ignored-editing').value.trim();
   if(!rem){ document.getElementById('ignored-input').focus(); return; }
+  // Se estava editando e o nome mudou, remove o antigo primeiro
+  if(editing && editing!==rem){
+    await removeIgnored(editing);
+  }
   await addIgnored(rem);
   closeIgnoredModal();
 }
@@ -1348,8 +1390,9 @@ document.addEventListener('click', function(e){
 <!-- MODAL exceção de remetente -->
 <div class="modal-overlay hidden" id="modal-ignored">
   <div class="modal">
-    <h2>Adicionar exceção de remetente</h2>
-    <p style="font-size:12px;color:var(--text2);line-height:1.6">Remetentes na lista de exceções <strong>nunca têm regra automática salva</strong>. Você classifica cada lançamento manualmente, sem que o sistema propague para outros lançamentos do mesmo remetente.<br><br>Ideal para: Receita Federal, GPS, DARF e outros pagadores que representam naturezas diferentes.</p>
+    <h2 id="modal-ignored-title">Adicionar exceção de remetente</h2>
+    <input type="hidden" id="ignored-editing" value="">
+    <p style="font-size:12px;color:var(--text2);line-height:1.6">Remetentes na lista de exceções <strong>nunca têm regra automática salva</strong>. Você classifica cada lançamento manualmente, sem que o sistema propague para outros lançamentos do mesmo remetente.<br><br>Ideal para: Receita Federal, GPS, DARF e outros pagadores ambíguos.</p>
     <div class="field">
       <label>Remetente (como aparece no extrato)</label>
       <input id="ignored-input" list="ignored-datalist" placeholder="Digite ou selecione um remetente..." autocomplete="off">
@@ -1357,7 +1400,7 @@ document.addEventListener('click', function(e){
     </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeIgnoredModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmAddIgnored()">Adicionar exceção</button>
+      <button class="btn btn-primary" onclick="confirmAddIgnored()">Salvar</button>
     </div>
   </div>
 </div>
