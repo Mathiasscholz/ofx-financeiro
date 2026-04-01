@@ -223,6 +223,10 @@ tbody tr:hover td{background:var(--bg)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         Regras aprendidas
       </button>
+      <button class="nav-item" onclick="showTab('fundo')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Fundo DI
+      </button>
       <div class="nav-sep"></div>
       <button class="nav-item" onclick="showTab('cadastro')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -431,6 +435,81 @@ tbody tr:hover td{background:var(--bg)}
             <thead><tr><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Banco</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Nº conta</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Empresa</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Tipo</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Transações</th><th style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg)"></th></tr></thead>
             <tbody id="acct-tbody"></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNDO DI -->
+    <div id="tab-fundo" class="hidden">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Fundo DI — Trust</div>
+        </div>
+        <div class="topbar-right">
+          <span id="fundo-badge" class="tx-count"></span>
+        </div>
+      </div>
+      <div class="content">
+        <div id="no-data-fundo" class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          <h3>Sem movimentações</h3>
+          <p>Importe extratos OFX com movimentações do Fundo Trust DI para ver o painel</p>
+        </div>
+        <div id="fundo-content" class="hidden">
+
+          <!-- Filtros -->
+          <div class="dash-filters">
+            <span style="font-size:12px;font-weight:600;color:var(--text2)">Filtrar por</span>
+            <div class="filter-group">
+              <label>Mês</label>
+              <select id="fundo-mes" onchange="renderFundo()"><option value="">Todo o período</option></select>
+            </div>
+            <div class="filter-group">
+              <label>Unidade</label>
+              <select id="fundo-unidade" onchange="renderFundo()"><option value="">Todas</option></select>
+            </div>
+          </div>
+
+          <!-- Cards de resumo -->
+          <div class="metrics-row" id="fundo-metrics"></div>
+
+          <!-- Gráfico de evolução -->
+          <div class="chart-card">
+            <div class="chart-title">Evolução do saldo no fundo</div>
+            <div class="legend-row" id="fundo-legend"></div>
+            <div class="chart-wrap" style="height:220px"><canvas id="chart-fundo"></canvas></div>
+          </div>
+
+          <!-- Tabela de movimentações -->
+          <div class="table-section">
+            <div class="table-header">
+              <h3>Movimentações</h3>
+              <div class="filters">
+                <select id="fundo-tipo-filtro" onchange="renderFundoTabela()">
+                  <option value="">Todas</option>
+                  <option value="aplicacao">Só Aplicações</option>
+                  <option value="resgate">Só Resgates</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Empresa</th>
+                  <th>Descrição</th>
+                  <th style="text-align:right">Valor</th>
+                  <th style="text-align:right">Saldo acum.</th>
+                </tr></thead>
+                <tbody id="fundo-tbody"></tbody>
+              </table>
+            </div>
+            <div class="table-footer">
+              <span id="fundo-footer"></span>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -836,6 +915,10 @@ function refresh(){
   if(has){ populateDashFilters(); renderDashboard(); populateFilters(); renderTable(); renderAnaliseCat(); populateRemFiltros(); renderRemetentes(); }
   if(hasEmp) renderEmpresas(emps);
   renderCadastro(); renderCatGrid();
+
+  // Fundo DI — mostra/esconde baseado em movimentações detectadas
+  const hasFundo = getFundoTx().length > 0;
+  if(hasFundo) renderFundo();
 }
 
 // ── Dashboard ─────────────────────────────────────────────
@@ -1348,12 +1431,188 @@ async function confirmAddIgnored(){
   closeIgnoredModal();
 }
 
+
+// ── Fundo DI ──────────────────────────────────────────────
+const FUNDO_APLIC_KW  = ['aplicacao trust di','aplic trust di','aplicação trust di'];
+const FUNDO_RESGATE_KW= ['int resgate trust di','resgate trust di'];
+
+function getFundoTx(){
+  return allTx.filter(t=>{
+    const d=(t.description||'').toLowerCase();
+    return FUNDO_APLIC_KW.some(k=>d.includes(k)) || FUNDO_RESGATE_KW.some(k=>d.includes(k));
+  });
+}
+
+function getFundoTipo(t){
+  const d=(t.description||'').toLowerCase();
+  if(FUNDO_RESGATE_KW.some(k=>d.includes(k))) return 'resgate';
+  return 'aplicacao';
+}
+
+let chartFundo=null;
+
+function renderFundo(){
+  const mes   = document.getElementById('fundo-mes').value;
+  const unid  = document.getElementById('fundo-unidade').value;
+
+  // Popula filtros
+  const mesSel = document.getElementById('fundo-mes');
+  const curMes = mesSel.value;
+  mesSel.innerHTML='<option value="">Todo o período</option>';
+  [...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort().forEach(m=>{
+    const[y,mo]=m.split('-');
+    const o=document.createElement('option'); o.value=m;
+    o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
+    mesSel.appendChild(o);
+  });
+  if(curMes) mesSel.value=curMes;
+
+  const unidSel = document.getElementById('fundo-unidade');
+  const curUnid = unidSel.value;
+  unidSel.innerHTML='<option value="">Todas</option>';
+  [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
+    const o=document.createElement('option'); o.value=c; o.textContent=c; unidSel.appendChild(o);
+  });
+  if(curUnid) unidSel.value=curUnid;
+
+  // Filtra por período e unidade
+  const fundoTx = getFundoTx()
+    .filter(t=>(!mes||t.date&&t.date.startsWith(mes))&&(!unid||t.company===unid))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  const hasData = fundoTx.length > 0;
+  document.getElementById('no-data-fundo').classList.toggle('hidden', hasData);
+  document.getElementById('fundo-content').classList.toggle('hidden', !hasData);
+  if(!hasData) return;
+
+  document.getElementById('fundo-badge').textContent=`${fundoTx.length} movimentações`;
+
+  // Métricas
+  let totalAplic=0, totalResgate=0;
+  fundoTx.forEach(t=>{
+    if(getFundoTipo(t)==='aplicacao') totalAplic+=Math.abs(t.amount);
+    else totalResgate+=Math.abs(t.amount);
+  });
+  const saldoAtual = totalAplic - totalResgate;
+  const qtdAplic   = fundoTx.filter(t=>getFundoTipo(t)==='aplicacao').length;
+  const qtdResgate = fundoTx.filter(t=>getFundoTipo(t)==='resgate').length;
+
+  document.getElementById('fundo-metrics').innerHTML=`
+    <div class="metric">
+      <div class="metric-label">Saldo atual no fundo</div>
+      <div class="metric-val ${saldoAtual>=0?'pos':'neg'}">${fmtS(saldoAtual)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdAplic} aplicações · ${qtdResgate} resgates</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Total aplicado</div>
+      <div class="metric-val pos">${fmt(totalAplic)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdAplic} operações</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Total resgatado</div>
+      <div class="metric-val neg">${fmt(totalResgate)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdResgate} operações</div>
+    </div>`;
+
+  // Gráfico — saldo acumulado por dia
+  let saldo=0;
+  const porDia={};
+  fundoTx.forEach(t=>{
+    const d=t.date||''; if(!d) return;
+    if(!porDia[d]) porDia[d]=0;
+    if(getFundoTipo(t)==='aplicacao') porDia[d]+=Math.abs(t.amount);
+    else porDia[d]-=Math.abs(t.amount);
+  });
+  const dias=Object.keys(porDia).sort();
+  const saldos=[]; let acum=0;
+  dias.forEach(d=>{ acum+=porDia[d]; saldos.push(+acum.toFixed(2)); });
+  const labels=dias.map(d=>{ const[y,m,dia]=d.split('-'); return`${dia}/${m}`; });
+
+  const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
+  destroyChart(chartFundo);
+  chartFundo=new Chart(document.getElementById('chart-fundo'),{
+    type:'line',
+    data:{labels,datasets:[{
+      label:'Saldo no fundo',
+      data:saldos,
+      borderColor:'#1D9E75',
+      backgroundColor:'rgba(29,158,117,.08)',
+      borderWidth:2,
+      pointRadius:dias.length<=31?3:1,
+      tension:.3,
+      fill:true
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
+      scales:{
+        x:{ticks:{color:tc,font:{size:10},maxRotation:45,autoSkip:dias.length>20},grid:{display:false}},
+        y:{ticks:{color:tc,font:{size:10},callback:v=>'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v)},grid:{color:gc}}
+      }
+    }
+  });
+
+  document.getElementById('fundo-legend').innerHTML=`
+    <span class="legend-item"><span class="legend-sq" style="background:#1D9E75"></span>Saldo acumulado no fundo</span>`;
+
+  renderFundoTabela();
+}
+
+function renderFundoTabela(){
+  const mes   = document.getElementById('fundo-mes').value;
+  const unid  = document.getElementById('fundo-unidade').value;
+  const tipo  = document.getElementById('fundo-tipo-filtro').value;
+
+  const fundoTx = getFundoTx()
+    .filter(t=>
+      (!mes||t.date&&t.date.startsWith(mes)) &&
+      (!unid||t.company===unid) &&
+      (!tipo||getFundoTipo(t)===tipo)
+    )
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  // Calcula saldo acumulado considerando TODAS as movimentações (sem filtro de tipo)
+  const todasFundoTx = getFundoTx()
+    .filter(t=>(!mes||t.date&&t.date.startsWith(mes))&&(!unid||t.company===unid))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  // Mapa de saldo acumulado por id
+  let acum=0;
+  const saldoMap={};
+  todasFundoTx.forEach(t=>{
+    if(getFundoTipo(t)==='aplicacao') acum+=Math.abs(t.amount);
+    else acum-=Math.abs(t.amount);
+    saldoMap[t.id]=acum;
+  });
+
+  document.getElementById('fundo-footer').textContent=
+    `${fundoTx.length} movimentações exibidas`;
+
+  document.getElementById('fundo-tbody').innerHTML=fundoTx.map(t=>{
+    const isAplic = getFundoTipo(t)==='aplicacao';
+    const saldoAcum = saldoMap[t.id]??0;
+    return`<tr>
+      <td style="white-space:nowrap;color:var(--text2);font-family:'DM Mono',monospace;font-size:12px">${fmtDate(t.date)}</td>
+      <td>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${isAplic?'var(--green)':'var(--red)'};flex-shrink:0"></span>
+          <span style="font-weight:500;color:${isAplic?'var(--green)':'var(--red)'}">${isAplic?'Aplicação':'Resgate'}</span>
+        </span>
+      </td>
+      <td style="font-size:12px;color:var(--text2)">${t.company||'—'}</td>
+      <td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.description}">${t.description}</td>
+      <td style="text-align:right" class="${isAplic?'amount-pos':'amount-neg'}">${isAplic?'+ ':'- '}${fmt(t.amount)}</td>
+      <td style="text-align:right;font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:${saldoAcum>=0?'var(--green)':'var(--red)'}">${fmt(saldoAcum)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhuma movimentação encontrada.</td></tr>`;
+}
+
 // ── Tabs ──────────────────────────────────────────────────
-const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','regras','cadastro'];
+const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','fundo','regras','cadastro'];
 function showTab(id){
   document.querySelectorAll('.nav-item').forEach((t,i)=>t.classList.toggle('active',TAB_NAMES[i]===id));
   TAB_NAMES.forEach(n=>document.getElementById('tab-'+n).classList.toggle('hidden',n!==id));
   if(id==='regras') renderRegras();
+  if(id==='fundo'&&allTx.length>0) renderFundo();
 }
 
 // ── Drag & Drop ───────────────────────────────────────────
