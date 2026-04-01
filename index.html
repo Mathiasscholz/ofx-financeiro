@@ -450,24 +450,43 @@ tbody tr:hover td{background:var(--bg)}
         </div>
       </div>
       <div class="content">
-        <div id="no-data-fundo" class="empty-state">
+        <!-- Filtros sempre visíveis -->
+        <div class="dash-filters">
+          <span style="font-size:12px;font-weight:600;color:var(--text2)">Filtrar por</span>
+          <div class="filter-group">
+            <label>Mês</label>
+            <select id="fundo-mes" onchange="renderFundo()"><option value="">Todo o período</option></select>
+          </div>
+          <div class="filter-group">
+            <label>Unidade</label>
+            <select id="fundo-unidade" onchange="renderFundo()"><option value="">Todas</option></select>
+          </div>
+        </div>
+
+        <div id="no-data-fundo" class="empty-state hidden">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-          <h3>Sem movimentações</h3>
-          <p>Importe extratos OFX com movimentações do Fundo Trust DI para ver o painel</p>
+          <h3>Sem movimentações no período</h3>
+          <p>Nenhuma movimentação do Fundo Trust DI encontrada para o filtro selecionado</p>
         </div>
         <div id="fundo-content" class="hidden">
 
-          <!-- Filtros -->
-          <div class="dash-filters">
-            <span style="font-size:12px;font-weight:600;color:var(--text2)">Filtrar por</span>
-            <div class="filter-group">
-              <label>Mês</label>
-              <select id="fundo-mes" onchange="renderFundo()"><option value="">Todo o período</option></select>
+          <!-- Saldo inicial -->
+          <div id="fundo-saldo-inicial-box" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:var(--shadow)">
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Data de referência</div>
+                <input type="date" id="fundo-data-ini" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text)" onchange="saveSaldoInicial()">
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Saldo inicial — Conta Corrente (R$)</div>
+                <input type="number" id="fundo-saldo-cc" placeholder="0,00" step="0.01" min="0" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text);width:160px" onchange="saveSaldoInicial()">
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Saldo inicial — Fundo DI (R$)</div>
+                <input type="number" id="fundo-saldo-fundo" placeholder="0,00" step="0.01" min="0" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text);width:160px" onchange="saveSaldoInicial()">
+              </div>
             </div>
-            <div class="filter-group">
-              <label>Unidade</label>
-              <select id="fundo-unidade" onchange="renderFundo()"><option value="">Todas</option></select>
-            </div>
+            <div id="fundo-saldo-ini-info" style="font-size:11px;color:var(--text3)">Configure os saldos iniciais para acompanhar o crescimento a partir de uma data base.</div>
           </div>
 
           <!-- Cards de resumo -->
@@ -585,7 +604,7 @@ tbody tr:hover td{background:var(--bg)}
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div style="background:var(--green-bg);border:1px solid var(--green);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--green)">
-        <strong>Só transações OFX</strong><br>Remove apenas os lançamentos importados. Contas cadastradas e regras aprendidas são preservadas.
+        <strong>Só transações OFX</strong><br>Remove apenas os lançamentos importados. Contas cadastradas e regras aprendidas são preservadas. Use este quando quiser reimportar os extratos do zero.
       </div>
       <div style="background:var(--red-bg);border:1px solid rgba(192,57,43,.3);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--red)">
         <strong>Transações + Contas</strong><br>Remove lançamentos e cadastro de contas. As regras aprendidas são preservadas.
@@ -1436,6 +1455,48 @@ async function confirmAddIgnored(){
 const FUNDO_APLIC_KW  = ['aplicacao trust di','aplic trust di','aplicação trust di'];
 const FUNDO_RESGATE_KW= ['int resgate trust di','resgate trust di'];
 
+function loadSaldoInicial(){
+  try{
+    const data = localStorage.getItem('fundo_saldo_inicial');
+    if(data){
+      const d = JSON.parse(data);
+      if(d.dataIni) document.getElementById('fundo-data-ini').value = d.dataIni;
+      if(d.saldoCC!=null) document.getElementById('fundo-saldo-cc').value = d.saldoCC;
+      if(d.saldoFundo!=null) document.getElementById('fundo-saldo-fundo').value = d.saldoFundo;
+      updateSaldoIniInfo(d);
+    }
+  }catch(e){}
+}
+
+function saveSaldoInicial(){
+  const dataIni  = document.getElementById('fundo-data-ini').value;
+  const saldoCC  = parseFloat(document.getElementById('fundo-saldo-cc').value)||0;
+  const saldoFundo = parseFloat(document.getElementById('fundo-saldo-fundo').value)||0;
+  const d = {dataIni, saldoCC, saldoFundo};
+  try{ localStorage.setItem('fundo_saldo_inicial', JSON.stringify(d)); }catch(e){}
+  updateSaldoIniInfo(d);
+  renderFundo();
+}
+
+function updateSaldoIniInfo(d){
+  const el = document.getElementById('fundo-saldo-ini-info');
+  if(!el) return;
+  if(d.dataIni && (d.saldoCC||d.saldoFundo)){
+    const dtFmt = d.dataIni.split('-').reverse().join('/');
+    el.innerHTML = `<span style="color:var(--green);font-weight:500">✓ Saldo base configurado em ${dtFmt}</span> · CC: <strong>R$ ${(d.saldoCC||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong> · Fundo: <strong>R$ ${(d.saldoFundo||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>`;
+  } else {
+    el.textContent = 'Configure os saldos iniciais para acompanhar o crescimento a partir de uma data base.';
+  }
+}
+
+function getSaldoInicial(){
+  try{
+    const data = localStorage.getItem('fundo_saldo_inicial');
+    if(data) return JSON.parse(data);
+  }catch(e){}
+  return {dataIni:'', saldoCC:0, saldoFundo:0};
+}
+
 function getFundoTx(){
   return allTx.filter(t=>{
     const d=(t.description||'').toLowerCase();
@@ -1455,9 +1516,12 @@ function renderFundo(){
   const mes   = document.getElementById('fundo-mes').value;
   const unid  = document.getElementById('fundo-unidade').value;
 
-  // Popula filtros
+  // Popula filtros preservando seleção atual
   const mesSel = document.getElementById('fundo-mes');
+  const unidSel = document.getElementById('fundo-unidade');
   const curMes = mesSel.value;
+  const curUnid = unidSel.value;
+
   mesSel.innerHTML='<option value="">Todo o período</option>';
   [...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort().forEach(m=>{
     const[y,mo]=m.split('-');
@@ -1467,17 +1531,18 @@ function renderFundo(){
   });
   if(curMes) mesSel.value=curMes;
 
-  const unidSel = document.getElementById('fundo-unidade');
-  const curUnid = unidSel.value;
   unidSel.innerHTML='<option value="">Todas</option>';
   [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
     const o=document.createElement('option'); o.value=c; o.textContent=c; unidSel.appendChild(o);
   });
   if(curUnid) unidSel.value=curUnid;
 
-  // Filtra por período e unidade
+  // Filtra por período e unidade (usa valores atuais após repopular)
+  const mesFiltro = mesSel.value;
+  const unidFiltro = unidSel.value;
+
   const fundoTx = getFundoTx()
-    .filter(t=>(!mes||t.date&&t.date.startsWith(mes))&&(!unid||t.company===unid))
+    .filter(t=>(!mesFiltro||t.date&&t.date.startsWith(mesFiltro))&&(!unidFiltro||t.company===unidFiltro))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   const hasData = fundoTx.length > 0;
@@ -1497,19 +1562,22 @@ function renderFundo(){
   const qtdAplic   = fundoTx.filter(t=>getFundoTipo(t)==='aplicacao').length;
   const qtdResgate = fundoTx.filter(t=>getFundoTipo(t)==='resgate').length;
 
+  const si = getSaldoInicial();
+  const saldoFundoTotal = (si.saldoFundo||0) + saldoAtual;
+
   document.getElementById('fundo-metrics').innerHTML=`
     <div class="metric">
       <div class="metric-label">Saldo atual no fundo</div>
-      <div class="metric-val ${saldoAtual>=0?'pos':'neg'}">${fmtS(saldoAtual)}</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdAplic} aplicações · ${qtdResgate} resgates</div>
+      <div class="metric-val ${saldoFundoTotal>=0?'pos':'neg'}">${fmt(saldoFundoTotal)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${si.saldoFundo?'Saldo ini: '+fmt(si.saldoFundo)+' + ':''}Movim: ${fmtS(saldoAtual)}</div>
     </div>
     <div class="metric">
-      <div class="metric-label">Total aplicado</div>
+      <div class="metric-label">Total aplicado (período)</div>
       <div class="metric-val pos">${fmt(totalAplic)}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdAplic} operações</div>
     </div>
     <div class="metric">
-      <div class="metric-label">Total resgatado</div>
+      <div class="metric-label">Total resgatado (período)</div>
       <div class="metric-val neg">${fmt(totalResgate)}</div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdResgate} operações</div>
     </div>`;
@@ -1612,7 +1680,7 @@ function showTab(id){
   document.querySelectorAll('.nav-item').forEach((t,i)=>t.classList.toggle('active',TAB_NAMES[i]===id));
   TAB_NAMES.forEach(n=>document.getElementById('tab-'+n).classList.toggle('hidden',n!==id));
   if(id==='regras') renderRegras();
-  if(id==='fundo'&&allTx.length>0) renderFundo();
+  if(id==='fundo'){ loadSaldoInicial(); if(allTx.length>0) renderFundo(); }
 }
 
 // ── Drag & Drop ───────────────────────────────────────────
