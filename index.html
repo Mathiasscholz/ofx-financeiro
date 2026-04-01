@@ -581,26 +581,35 @@ function catColor(name){ const c=allCats().find(c=>c.name===name); return c?c.co
 
 // ── Load from Supabase ────────────────────────────────────
 async function loadAll(){
+  // Carrega cada tabela independentemente para não travar se uma falhar
   try{
-    const [ra,rt,rc,rr]=await Promise.all([
-      sb.from('contas').select('*').order('created_at'),
-      sb.from('transacoes').select('*').order('date',{ascending:false}),
-      sb.from('categorias').select('*').eq('is_default',false).order('created_at'),
-      sb.from('regras_classificacao').select('*'),
-    ]);
+    const ra = await sb.from('contas').select('*').order('created_at');
     accounts=(ra.data||[]).map(a=>({acctId:a.acct_id,bankId:a.bank_id,bankName:a.bank_name,company:a.company,type:a.type}));
+  }catch(e){ console.error('Erro contas:',e); }
+
+  try{
+    const rt = await sb.from('transacoes').select('*').order('date',{ascending:false});
     allTx=(rt.data||[]).map(t=>({id:t.id,acctId:t.acct_id,bankId:t.bank_id,org:t.org,date:t.date,description:t.description,remetente:t.remetente,amount:parseFloat(t.amount),type:t.type,category:t.category,company:t.company}));
+  }catch(e){ console.error('Erro transacoes:',e); }
+
+  try{
+    const rc = await sb.from('categorias').select('*').eq('is_default',false).order('created_at');
     customCats=(rc.data||[]).map(c=>({id:c.id,name:c.name,color:c.color,type:c.type,keywords:c.keywords||[],isDefault:false}));
-    // Carrega regras aprendidas em memória para lookup rápido
+  }catch(e){ console.error('Erro categorias:',e); }
+
+  try{
+    // Seleciona apenas colunas básicas — sem valor_min/valor_max para compatibilidade
+    const rr = await sb.from('regras_classificacao').select('remetente,category');
     learnedRules={}; ignoredRemetentes=new Set();
     (rr.data||[]).forEach(r=>{
+      if(!r.remetente||!r.category) return;
       if(r.category==='__ignorar__'){
         ignoredRemetentes.add(r.remetente);
       } else {
         learnedRules[r.remetente]=r.category;
       }
     });
-  }catch(e){ toast('Erro ao carregar dados: '+e.message,'error'); }
+  }catch(e){ console.error('Erro regras:',e); learnedRules={}; ignoredRemetentes=new Set(); }
 }
 
 // ── Aprendizado por regras ────────────────────────────────
@@ -1350,9 +1359,14 @@ document.addEventListener('drop',e=>{ e.preventDefault(); handleFiles(e.dataTran
 
 // ── Init ──────────────────────────────────────────────────
 (async()=>{
-  await loadAll();
-  document.getElementById('loader').style.display='none';
-  refresh();
+  try{
+    await loadAll();
+  }catch(e){
+    console.error('Erro crítico no loadAll:',e);
+  }finally{
+    document.getElementById('loader').style.display='none';
+    refresh();
+  }
 })();
 
 // Event delegation para cliques nas linhas de categoria
