@@ -475,16 +475,17 @@ tbody tr:hover td{background:var(--bg)}
             <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
               <div>
                 <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Data de referência</div>
-                <input type="date" id="fundo-data-ini" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text)" onchange="saveSaldoInicial()">
+                <input type="date" id="fundo-data-ini" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text)" onchange="">
               </div>
               <div>
                 <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Saldo inicial — Conta Corrente (R$)</div>
-                <input type="number" id="fundo-saldo-cc" placeholder="0,00" step="0.01" min="0" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text);width:160px" onchange="saveSaldoInicial()">
+                <input type="number" id="fundo-saldo-cc" placeholder="0,00" step="0.01" min="0" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text);width:160px">
               </div>
               <div>
                 <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Saldo inicial — Fundo DI (R$)</div>
-                <input type="number" id="fundo-saldo-fundo" placeholder="0,00" step="0.01" min="0" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text);width:160px" onchange="saveSaldoInicial()">
+                <input type="number" id="fundo-saldo-fundo" placeholder="0,00" step="0.01" min="0" style="font-size:12px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text);width:160px">
               </div>
+              <button class="btn btn-primary" onclick="saveSaldoInicial()" style="white-space:nowrap;align-self:flex-end">Salvar</button>
             </div>
             <div id="fundo-saldo-ini-info" style="font-size:11px;color:var(--text3)">Configure os saldos iniciais para acompanhar o crescimento a partir de uma data base.</div>
           </div>
@@ -661,7 +662,7 @@ const SUPABASE_URL = 'https://trtebwwzfnnjltbdhpay.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRydGVid3d6Zm5uamx0YmRocGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTQzNTQsImV4cCI6MjA5MDEzMDM1NH0.eOhEEiT7HUvnukX2Vd-YnL9YJ_038z2lwz3nNHw2ej8';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let allTx=[], accounts=[], customCats=[], learnedRules={}, ignoredRemetentes=new Set();
+let allTx=[], accounts=[], customCats=[], learnedRules={}, ignoredRemetentes=new Set(), saldoInicialData={dataIni:'',saldoCC:0,saldoFundo:0};
 let unknownQueue=[], currentUnknown=null;
 
 // ── Categorias padrão ─────────────────────────────────────
@@ -686,8 +687,23 @@ async function loadAll(){
   }catch(e){ console.error('Erro contas:',e); }
 
   try{
-    const rt = await sb.from('transacoes').select('*').order('date',{ascending:false});
-    allTx=(rt.data||[]).map(t=>({id:t.id,acctId:t.acct_id,bankId:t.bank_id,org:t.org,date:t.date,description:t.description,remetente:t.remetente,amount:parseFloat(t.amount),type:t.type,category:t.category,company:t.company}));
+    // Carrega todas as transações em páginas de 1000 (limite do Supabase)
+    let allRows = [];
+    let from = 0;
+    const pageSize = 1000;
+    while(true){
+      const rt = await sb.from('transacoes')
+        .select('*')
+        .order('date',{ascending:false})
+        .range(from, from + pageSize - 1);
+      if(rt.error) throw rt.error;
+      const rows = rt.data || [];
+      allRows = allRows.concat(rows);
+      if(rows.length < pageSize) break; // última página
+      from += pageSize;
+    }
+    allTx = allRows.map(t=>({id:t.id,acctId:t.acct_id,bankId:t.bank_id,org:t.org,date:t.date,description:t.description,remetente:t.remetente,amount:parseFloat(t.amount),type:t.type,category:t.category,company:t.company}));
+    console.log('Transações carregadas:', allTx.length);
   }catch(e){ console.error('Erro transacoes:',e); }
 
   try{
@@ -708,6 +724,14 @@ async function loadAll(){
       }
     });
   }catch(e){ console.error('Erro regras:',e); learnedRules={}; ignoredRemetentes=new Set(); }
+
+  try{
+    // Carrega saldo inicial do fundo do Supabase
+    const rs = await sb.from('configuracoes').select('*').eq('chave','saldo_inicial').maybeSingle();
+    if(rs.data && rs.data.valor){
+      saldoInicialData = JSON.parse(rs.data.valor);
+    }
+  }catch(e){ console.error('Erro saldo inicial:',e); }
 }
 
 // ── Aprendizado por regras ────────────────────────────────
@@ -1456,24 +1480,31 @@ const FUNDO_APLIC_KW  = ['aplicacao trust di','aplic trust di','aplicação trus
 const FUNDO_RESGATE_KW= ['int resgate trust di','resgate trust di'];
 
 function loadSaldoInicial(){
-  try{
-    const data = localStorage.getItem('fundo_saldo_inicial');
-    if(data){
-      const d = JSON.parse(data);
-      if(d.dataIni) document.getElementById('fundo-data-ini').value = d.dataIni;
-      if(d.saldoCC!=null) document.getElementById('fundo-saldo-cc').value = d.saldoCC;
-      if(d.saldoFundo!=null) document.getElementById('fundo-saldo-fundo').value = d.saldoFundo;
-      updateSaldoIniInfo(d);
-    }
-  }catch(e){}
+  // Preenche os campos com o que foi carregado do Supabase no loadAll
+  const d = saldoInicialData;
+  if(d.dataIni) document.getElementById('fundo-data-ini').value = d.dataIni;
+  if(d.saldoCC!=null) document.getElementById('fundo-saldo-cc').value = d.saldoCC||'';
+  if(d.saldoFundo!=null) document.getElementById('fundo-saldo-fundo').value = d.saldoFundo||'';
+  updateSaldoIniInfo(d);
 }
 
-function saveSaldoInicial(){
-  const dataIni  = document.getElementById('fundo-data-ini').value;
-  const saldoCC  = parseFloat(document.getElementById('fundo-saldo-cc').value)||0;
+async function saveSaldoInicial(){
+  const dataIni    = document.getElementById('fundo-data-ini').value;
+  const saldoCC    = parseFloat(document.getElementById('fundo-saldo-cc').value)||0;
   const saldoFundo = parseFloat(document.getElementById('fundo-saldo-fundo').value)||0;
   const d = {dataIni, saldoCC, saldoFundo};
-  try{ localStorage.setItem('fundo_saldo_inicial', JSON.stringify(d)); }catch(e){}
+  saldoInicialData = d;
+  // Salva no Supabase
+  try{
+    await sb.from('configuracoes').upsert(
+      {chave:'saldo_inicial', valor: JSON.stringify(d)},
+      {onConflict:'chave'}
+    );
+    toast('Saldo inicial salvo','success');
+  }catch(e){
+    console.error('Erro ao salvar saldo inicial:',e);
+    toast('Erro ao salvar: '+e.message,'error');
+  }
   updateSaldoIniInfo(d);
   renderFundo();
 }
@@ -1490,11 +1521,7 @@ function updateSaldoIniInfo(d){
 }
 
 function getSaldoInicial(){
-  try{
-    const data = localStorage.getItem('fundo_saldo_inicial');
-    if(data) return JSON.parse(data);
-  }catch(e){}
-  return {dataIni:'', saldoCC:0, saldoFundo:0};
+  return saldoInicialData || {dataIni:'', saldoCC:0, saldoFundo:0};
 }
 
 function getFundoTx(){
