@@ -223,6 +223,10 @@ tbody tr:hover td{background:var(--bg)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         Regras aprendidas
       </button>
+      <button class="nav-item" onclick="showTab('vendas')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Vendas XML
+      </button>
       <button class="nav-item" onclick="showTab('fundo')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         Fundo DI
@@ -435,6 +439,109 @@ tbody tr:hover td{background:var(--bg)}
             <thead><tr><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Banco</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Nº conta</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Empresa</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Tipo</th><th style="padding:10px 14px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg)">Transações</th><th style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg)"></th></tr></thead>
             <tbody id="acct-tbody"></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VENDAS XML -->
+    <div id="tab-vendas" class="hidden">
+      <div class="topbar">
+        <div><div class="topbar-title">Vendas XML</div></div>
+        <div class="topbar-right">
+          <span id="vendas-badge" class="tx-count"></span>
+          <button class="btn btn-primary" onclick="document.getElementById('xml-file-input').click()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importar ZIP
+          </button>
+          <input type="file" id="xml-file-input" accept=".zip" style="display:none" onchange="handleXmlZip(this.files[0])">
+          <button class="btn btn-danger" onclick="clearVendasXml()" id="vendas-clear-btn" style="display:none">Limpar dados</button>
+        </div>
+      </div>
+      <div class="content">
+
+        <!-- Filtros -->
+        <div class="dash-filters" id="vendas-filters" style="display:none">
+          <span style="font-size:12px;font-weight:600;color:var(--text2)">Filtrar por</span>
+          <div class="filter-group"><label>Mês</label>
+            <select id="vendas-mes" onchange="renderVendas()"><option value="">Todo o período</option></select>
+          </div>
+          <div class="filter-group"><label>Empresa</label>
+            <select id="vendas-empresa" onchange="renderVendas()"><option value="">Todas</option></select>
+          </div>
+          <div class="filter-group"><label>Tipo</label>
+            <select id="vendas-modelo" onchange="renderVendas()">
+              <option value="">NFC-e + NF-e</option>
+              <option value="65">Só NFC-e (varejo)</option>
+              <option value="55">Só NF-e (empresas)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="vendas-loading" style="display:none;padding:40px;text-align:center;color:var(--text2)">
+          <div style="width:28px;height:28px;border:3px solid var(--border2);border-top-color:var(--text);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px"></div>
+          <div id="vendas-loading-txt" style="font-size:13px">Processando arquivos...</div>
+        </div>
+
+        <!-- Empty -->
+        <div id="vendas-empty" class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <h3>Nenhum XML importado</h3>
+          <p>Clique em "Importar ZIP" para enviar seus arquivos de NFC-e e NF-e</p>
+        </div>
+
+        <!-- Conteúdo -->
+        <div id="vendas-content" style="display:none">
+
+          <!-- Cards principais -->
+          <div class="metrics-row" id="vendas-metrics"></div>
+
+          <!-- Cancelamentos destaque -->
+          <div id="vendas-cancel-alert" style="display:none;background:var(--red-bg);border:1px solid rgba(192,57,43,.3);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--red)" id="vendas-cancel-title"></div>
+              <div style="font-size:12px;color:var(--red);opacity:.8;margin-top:2px" id="vendas-cancel-sub"></div>
+            </div>
+            <button class="btn btn-sm" onclick="showCanceladas()" style="border-color:rgba(192,57,43,.4);color:var(--red)">Ver canceladas</button>
+          </div>
+
+          <!-- Gráfico diário + Mix -->
+          <div class="charts-grid">
+            <div class="chart-card"><div class="chart-title">Faturamento diário</div><div class="chart-wrap" style="height:200px"><canvas id="chart-vendas-dia"></canvas></div></div>
+            <div class="chart-card"><div class="chart-title">Mix de produtos (volume em litros)</div><div class="legend-row" id="legend-vendas-mix"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-vendas-mix"></canvas></div></div>
+          </div>
+
+          <!-- Tabela produtos -->
+          <div class="table-section">
+            <div class="table-header"><h3>Produtos vendidos</h3></div>
+            <div class="table-wrap">
+              <table><thead><tr>
+                <th>Produto</th>
+                <th style="text-align:right">Volume (L/un)</th>
+                <th style="text-align:right">Faturamento bruto</th>
+                <th style="text-align:right">Descontos</th>
+                <th style="text-align:right">Faturamento líquido</th>
+                <th style="text-align:right">Preço médio/L</th>
+                <th>Participação</th>
+              </tr></thead>
+              <tbody id="vendas-prod-tbody"></tbody></table>
+            </div>
+          </div>
+
+          <!-- Tabela canceladas (oculta por padrão) -->
+          <div id="vendas-cancel-table" style="display:none" class="table-section">
+            <div class="table-header">
+              <h3>Notas canceladas</h3>
+              <button class="btn btn-sm" onclick="document.getElementById('vendas-cancel-table').style.display='none'">✕ Fechar</button>
+            </div>
+            <div class="table-wrap">
+              <table><thead><tr>
+                <th>NF</th><th>Data</th><th>Empresa</th><th>Tipo</th><th style="text-align:right">Valor</th><th>Justificativa</th>
+              </tr></thead>
+              <tbody id="vendas-cancel-tbody"></tbody></table>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -732,6 +839,19 @@ async function loadAll(){
       saldoInicialData = JSON.parse(rs.data.valor);
     }
   }catch(e){ console.error('Erro saldo inicial:',e); }
+
+  try{
+    // Carrega vendas XML paginado
+    let vrows=[], vfrom=0;
+    while(true){
+      const rv = await sb.from('vendas_xml').select('*').range(vfrom,vfrom+999);
+      if(rv.error) throw rv.error;
+      vrows = vrows.concat(rv.data||[]);
+      if((rv.data||[]).length<1000) break;
+      vfrom+=1000;
+    }
+    vendasData = vrows;
+  }catch(e){ console.error('Erro vendas XML:',e); vendasData=[]; }
 }
 
 // ── Aprendizado por regras ────────────────────────────────
@@ -1701,13 +1821,358 @@ function renderFundoTabela(){
   }).join('') || `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhuma movimentação encontrada.</td></tr>`;
 }
 
+
+// ── Vendas XML ────────────────────────────────────────────
+let vendasData = []; // cache em memória
+let chartVendasDia = null, chartVendasMix = null;
+
+const NS = 'http://www.portalfiscal.inf.br/nfe';
+
+function getTagNS(el, tag){
+  const els = el.getElementsByTagNameNS(NS, tag);
+  return els.length ? els[0].textContent.trim() : '';
+}
+
+function parseXmlNota(xmlStr){
+  try{
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlStr, 'text/xml');
+    const root = doc.documentElement;
+    const tagRoot = root.localName;
+
+    // Evento de cancelamento — retorna flag
+    if(tagRoot === 'procEventoNFe' || tagRoot === 'cancNFe'){
+      const chNFe = root.getElementsByTagNameNS(NS,'chNFe')[0];
+      return { tipo:'cancelamento', chave: chNFe ? chNFe.textContent.trim() : '' };
+    }
+
+    const infNFe = root.getElementsByTagNameNS(NS,'infNFe')[0];
+    if(!infNFe) return null;
+
+    const mod    = getTagNS(infNFe,'mod');
+    const nNF    = getTagNS(infNFe,'nNF');
+    const serie  = getTagNS(infNFe,'serie');
+    const dhEmi  = getTagNS(infNFe,'dhEmi');
+    const data   = dhEmi ? dhEmi.slice(0,10) : '';
+    const mes    = data.slice(0,7);
+
+    const emit   = infNFe.getElementsByTagNameNS(NS,'emit')[0];
+    const cnpj   = emit ? getTagNS(emit,'CNPJ') : '';
+    const xNome  = emit ? getTagNS(emit,'xNome') : '';
+
+    const vNF    = parseFloat(getTagNS(infNFe,'vNF')||'0');
+    const vProd  = parseFloat(getTagNS(infNFe,'vProd')||'0');
+    const vDesc  = parseFloat(getTagNS(infNFe,'vDesc')||'0');
+
+    // Chave
+    const chave  = (infNFe.getAttribute('Id')||'').replace('NFe','');
+
+    // Produtos
+    const dets = infNFe.getElementsByTagNameNS(NS,'det');
+    const produtos = [];
+    for(const det of dets){
+      const xProd = getTagNS(det,'xProd');
+      const qCom  = parseFloat(getTagNS(det,'qCom')||'0');
+      const vProdItem = parseFloat(getTagNS(det,'vProd')||'0');
+      const vDescItem = parseFloat(getTagNS(det,'vDesc')||'0');
+      const vUnCom = parseFloat(getTagNS(det,'vUnCom')||'0');
+      const uCom   = getTagNS(det,'uCom');
+      if(xProd) produtos.push({ nome:xProd, qtd:qCom, unidade:uCom, vProd:vProdItem, vDesc:vDescItem, vUnCom });
+    }
+
+    // Status (autorizada ou cancelada via protNFe)
+    const protNFe = root.getElementsByTagNameNS(NS,'protNFe')[0];
+    const cStat   = protNFe ? getTagNS(protNFe,'cStat') : '100';
+    const cancelada = ['101','135','151','155'].includes(cStat);
+
+    // Justificativa de cancelamento (se houver evento embutido)
+    let justificativa = '';
+    const xJust = root.getElementsByTagNameNS(NS,'xJust')[0];
+    if(xJust) justificativa = xJust.textContent.trim();
+
+    return { id:chave||`${cnpj}_${nNF}_${serie}`, modelo:mod, numero:nNF, serie, data, mes,
+      empresa:xNome, cnpj_emitente:cnpj, valor_bruto:vProd, valor_desconto:vDesc,
+      valor_liquido:vNF, cancelada, justificativa, produtos, tipo:'nota' };
+  }catch(e){ return null; }
+}
+
+async function handleXmlZip(file){
+  if(!file) return;
+  document.getElementById('vendas-loading').style.display='block';
+  document.getElementById('vendas-empty').style.display='none';
+  document.getElementById('vendas-content').style.display='none';
+  document.getElementById('vendas-loading-txt').textContent='Descompactando ZIP...';
+
+  try{
+    // Usa JSZip via CDN (carrega dinamicamente)
+    if(!window.JSZip){
+      await new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload=res; s.onerror=rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    const zip = await JSZip.loadAsync(file);
+    const xmlFiles = Object.keys(zip.files).filter(n=>n.toLowerCase().endsWith('.xml') && !zip.files[n].dir);
+    document.getElementById('vendas-loading-txt').textContent=`Processando ${xmlFiles.length} arquivos XML...`;
+
+    const notas = [];
+    const cancelChaves = new Set();
+    let processed = 0;
+
+    // Primeira passagem: identifica cancelamentos
+    for(const name of xmlFiles){
+      if(name.toUpperCase().includes('CANCELADA')){
+        const xmlStr = await zip.files[name].async('string');
+        const r = parseXmlNota(xmlStr);
+        if(r && r.tipo==='cancelamento') cancelChaves.add(r.chave);
+      }
+    }
+
+    // Segunda passagem: processa notas
+    for(const name of xmlFiles){
+      if(name.toUpperCase().includes('CANCELADA')) continue;
+      const xmlStr = await zip.files[name].async('string');
+      const nota = parseXmlNota(xmlStr);
+      if(!nota || nota.tipo==='cancelamento') continue;
+      if(cancelChaves.has(nota.id)) nota.cancelada = true;
+      notas.push(nota);
+      processed++;
+      if(processed % 100 === 0)
+        document.getElementById('vendas-loading-txt').textContent=`Processando... ${processed}/${xmlFiles.length}`;
+    }
+
+    document.getElementById('vendas-loading-txt').textContent=`Salvando ${notas.length} notas no banco...`;
+
+    // Salva no Supabase em lotes de 200
+    const existingIds = new Set((await sb.from('vendas_xml').select('id')).data?.map(r=>r.id)||[]);
+    const novas = notas.filter(n=>!existingIds.has(n.id));
+
+    if(novas.length > 0){
+      for(let i=0;i<novas.length;i+=200){
+        const lote = novas.slice(i,i+200).map(n=>({
+          id:n.id, modelo:n.modelo, numero:n.numero, serie:n.serie,
+          data_emissao:n.data||null, empresa:n.empresa, cnpj_emitente:n.cnpj_emitente,
+          valor_bruto:n.valor_bruto, valor_desconto:n.valor_desconto, valor_liquido:n.valor_liquido,
+          cancelada:n.cancelada, justificativa:n.justificativa||'',
+          produtos:n.produtos, mes:n.mes
+        }));
+        const {error} = await sb.from('vendas_xml').upsert(lote,{onConflict:'id'});
+        if(error) throw error;
+        document.getElementById('vendas-loading-txt').textContent=`Salvando... ${Math.min(i+200,novas.length)}/${novas.length}`;
+      }
+      toast(`${novas.length} notas importadas com sucesso!`,'success');
+    } else {
+      toast('Nenhuma nota nova encontrada no ZIP','success');
+    }
+
+    await loadVendasData();
+
+  }catch(e){
+    console.error(e);
+    toast('Erro ao processar ZIP: '+e.message,'error');
+  }finally{
+    document.getElementById('vendas-loading').style.display='none';
+  }
+}
+
+async function loadVendasData(){
+  try{
+    // Carrega paginado
+    let all=[], from=0;
+    while(true){
+      const r = await sb.from('vendas_xml').select('*').range(from,from+999);
+      if(r.error) throw r.error;
+      all = all.concat(r.data||[]);
+      if((r.data||[]).length < 1000) break;
+      from += 1000;
+    }
+    vendasData = all;
+    renderVendas();
+  }catch(e){ console.error('Erro ao carregar vendas:',e); }
+}
+
+function getVendasFiltradas(){
+  const mes    = document.getElementById('vendas-mes')?.value||'';
+  const emp    = document.getElementById('vendas-empresa')?.value||'';
+  const modelo = document.getElementById('vendas-modelo')?.value||'';
+  return vendasData.filter(n=>
+    (!mes    || n.mes===mes) &&
+    (!emp    || n.cnpj_emitente===emp) &&
+    (!modelo || n.modelo===modelo)
+  );
+}
+
+function renderVendas(){
+  if(!vendasData.length){
+    document.getElementById('vendas-empty').style.display='block';
+    document.getElementById('vendas-content').style.display='none';
+    document.getElementById('vendas-filters').style.display='none';
+    document.getElementById('vendas-clear-btn').style.display='none';
+    document.getElementById('vendas-badge').textContent='';
+    return;
+  }
+
+  document.getElementById('vendas-filters').style.display='flex';
+  document.getElementById('vendas-clear-btn').style.display='inline-flex';
+  document.getElementById('vendas-empty').style.display='none';
+  document.getElementById('vendas-content').style.display='block';
+
+  // Popula filtros
+  const mesSel = document.getElementById('vendas-mes');
+  const empSel = document.getElementById('vendas-empresa');
+  const curMes = mesSel.value; const curEmp = empSel.value;
+
+  mesSel.innerHTML='<option value="">Todo o período</option>';
+  [...new Set(vendasData.map(n=>n.mes).filter(Boolean))].sort().forEach(m=>{
+    const[y,mo]=m.split('-');
+    const o=document.createElement('option'); o.value=m;
+    o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
+    mesSel.appendChild(o);
+  });
+  if(curMes) mesSel.value=curMes;
+
+  empSel.innerHTML='<option value="">Todas</option>';
+  [...new Map(vendasData.map(n=>[n.cnpj_emitente,n.empresa]))].forEach(([cnpj,nome])=>{
+    const o=document.createElement('option'); o.value=cnpj; o.textContent=nome||cnpj;
+    empSel.appendChild(o);
+  });
+  if(curEmp) empSel.value=curEmp;
+
+  const notas = getVendasFiltradas();
+  const validas = notas.filter(n=>!n.cancelada);
+  const canceladas = notas.filter(n=>n.cancelada);
+
+  const totBruto   = validas.reduce((s,n)=>s+(n.valor_bruto||0),0);
+  const totLiquido = validas.reduce((s,n)=>s+(n.valor_liquido||0),0);
+  const totDesc    = validas.reduce((s,n)=>s+(n.valor_desconto||0),0);
+  const ticketMed  = validas.length ? totLiquido/validas.length : 0;
+  const totCancelVl= canceladas.reduce((s,n)=>s+(n.valor_liquido||0),0);
+
+  document.getElementById('vendas-badge').textContent=`${notas.length} notas`;
+
+  // Cards
+  document.getElementById('vendas-metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">Faturamento líquido</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)}</div></div>
+    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>
+    <div class="metric"><div class="metric-label">Ticket médio por nota</div><div class="metric-val">${fmt(ticketMed)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${validas.length} notas válidas</div></div>`;
+
+  // Alert cancelamentos
+  const alertEl = document.getElementById('vendas-cancel-alert');
+  if(canceladas.length>0){
+    alertEl.style.display='flex';
+    document.getElementById('vendas-cancel-title').textContent=`${canceladas.length} notas canceladas — ${fmt(totCancelVl)}`;
+    document.getElementById('vendas-cancel-sub').textContent=`${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento bruto total`;
+  } else {
+    alertEl.style.display='none';
+  }
+
+  // Tabela canceladas
+  document.getElementById('vendas-cancel-tbody').innerHTML = canceladas.length===0?
+    '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text3)">Nenhuma nota cancelada no período</td></tr>':
+    canceladas.map(n=>`<tr>
+      <td style="font-size:12px">${n.numero}</td>
+      <td style="font-size:12px;color:var(--text2)">${fmtDate(n.data_emissao)}</td>
+      <td style="font-size:12px">${n.empresa||'—'}</td>
+      <td><span class="badge ${n.modelo==='65'?'badge-blue':'badge-green'}">${n.modelo==='65'?'NFC-e':'NF-e'}</span></td>
+      <td style="text-align:right;font-weight:600;color:var(--red);font-size:12px">${fmt(n.valor_liquido)}</td>
+      <td style="font-size:11px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n.justificativa||'—'}</td>
+    </tr>`).join('');
+
+  // Agrega produtos
+  const prodMap = {};
+  validas.forEach(nota=>{
+    (nota.produtos||[]).forEach(p=>{
+      if(!p.nome) return;
+      const nome = p.nome.trim();
+      if(!prodMap[nome]) prodMap[nome]={nome,qtd:0,vBruto:0,vDesc:0,vLiq:0,litros:true};
+      prodMap[nome].qtd   += p.qtd||0;
+      prodMap[nome].vBruto+= p.vProd||0;
+      prodMap[nome].vDesc += p.vDesc||0;
+      prodMap[nome].vLiq  += (p.vProd||0)-(p.vDesc||0);
+    });
+  });
+
+  const prods = Object.values(prodMap).sort((a,b)=>b.vLiq-a.vLiq);
+  const totProdLiq = prods.reduce((s,p)=>s+p.vLiq,0);
+  const COLORS_PROD = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#D4537E','#639922','#888780','#EF9F27','#E24B4A'];
+
+  // Tabela produtos
+  document.getElementById('vendas-prod-tbody').innerHTML = prods.map((p,i)=>{
+    const pct = totProdLiq>0?p.vLiq/totProdLiq*100:0;
+    const precoMed = p.qtd>0?p.vLiq/p.qtd:0;
+    return`<tr>
+      <td style="font-weight:500;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${COLORS_PROD[i%COLORS_PROD.length]};display:inline-block;margin-right:8px;vertical-align:middle"></span>${p.nome}</td>
+      <td style="text-align:right;font-size:12px;font-family:'DM Mono',monospace">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-size:12px" class="amount-pos">${fmt(p.vBruto)}</td>
+      <td style="text-align:right;font-size:12px" class="${p.vDesc>0?'amount-neg':''}">${p.vDesc>0?'- '+fmt(p.vDesc):'—'}</td>
+      <td style="text-align:right;font-size:12px;font-weight:600" class="amount-pos">${fmt(p.vLiq)}</td>
+      <td style="text-align:right;font-size:12px;color:var(--text2)">${precoMed>0?'R$ '+precoMed.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4}):'—'}</td>
+      <td style="width:120px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:${COLORS_PROD[i%COLORS_PROD.length]};border-radius:3px"></div></div>
+          <span style="font-size:11px;color:var(--text2);min-width:34px;text-align:right">${pct.toFixed(1)}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum produto encontrado</td></tr>';
+
+  // Gráfico diário
+  const porDia = {};
+  validas.forEach(n=>{ if(n.data_emissao){ porDia[n.data_emissao]=(porDia[n.data_emissao]||0)+(n.valor_liquido||0); } });
+  const diasLabels = Object.keys(porDia).sort();
+  const diasVals   = diasLabels.map(d=>+porDia[d].toFixed(2));
+  const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
+
+  if(chartVendasDia) chartVendasDia.destroy();
+  chartVendasDia = new Chart(document.getElementById('chart-vendas-dia'),{
+    type:'bar',
+    data:{labels:diasLabels.map(d=>{const[y,m,dia]=d.split('-');return`${dia}/${m}`;}),
+      datasets:[{data:diasVals,backgroundColor:'rgba(59,139,212,.7)',borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
+      scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:45,autoSkip:diasLabels.length>20},grid:{display:false}},
+              y:{ticks:{color:tc,font:{size:9},callback:v=>'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v)},grid:{color:gc}}}}
+  });
+
+  // Gráfico mix (top 6 produtos por volume)
+  const topProds = prods.filter(p=>p.qtd>0).slice(0,6);
+  const mixCols  = topProds.map((_,i)=>COLORS_PROD[i]);
+
+  if(chartVendasMix) chartVendasMix.destroy();
+  chartVendasMix = new Chart(document.getElementById('chart-vendas-mix'),{
+    type:'doughnut',
+    data:{labels:topProds.map(p=>p.nome),datasets:[{data:topProds.map(p=>+p.qtd.toFixed(2)),backgroundColor:mixCols,borderWidth:0,hoverOffset:5}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'65%',
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.toLocaleString('pt-BR',{maximumFractionDigits:2})} L/un`}}}}
+  });
+  document.getElementById('legend-vendas-mix').innerHTML=topProds.map((p,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${mixCols[i]}"></span>${p.nome}</span>`).join('');
+}
+
+function showCanceladas(){
+  const el = document.getElementById('vendas-cancel-table');
+  el.style.display = el.style.display==='none'?'block':'none';
+  if(el.style.display==='block') el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function clearVendasXml(){
+  if(!confirm('Apagar todos os dados de vendas XML? Esta ação não pode ser desfeita.')) return;
+  await sb.from('vendas_xml').delete().neq('id','__none__');
+  vendasData = [];
+  renderVendas();
+  toast('Dados de vendas apagados','success');
+}
+
 // ── Tabs ──────────────────────────────────────────────────
-const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','fundo','regras','cadastro'];
+const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','vendas','fundo','regras','cadastro'];
 function showTab(id){
   document.querySelectorAll('.nav-item').forEach((t,i)=>t.classList.toggle('active',TAB_NAMES[i]===id));
   TAB_NAMES.forEach(n=>document.getElementById('tab-'+n).classList.toggle('hidden',n!==id));
   if(id==='regras') renderRegras();
   if(id==='fundo'){ loadSaldoInicial(); if(allTx.length>0) renderFundo(); }
+  if(id==='vendas') renderVendas();
 }
 
 // ── Drag & Drop ───────────────────────────────────────────
