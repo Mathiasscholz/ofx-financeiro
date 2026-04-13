@@ -1947,7 +1947,9 @@ async function handleXmlZip(file){
     document.getElementById('vendas-loading-txt').textContent=`Salvando ${notas.length} notas no banco...`;
 
     // Salva no Supabase em lotes de 200
-    const existingIds = new Set((await sb.from('vendas_xml').select('id')).data?.map(r=>r.id)||[]);
+    const existRes = await sb.from('vendas_xml').select('id');
+    if(existRes.error) throw new Error('Erro ao buscar IDs existentes: ' + existRes.error.message);
+    const existingIds = new Set((existRes.data||[]).map(r=>r.id));
     const novas = notas.filter(n=>!existingIds.has(n.id));
 
     if(novas.length > 0){
@@ -1960,7 +1962,10 @@ async function handleXmlZip(file){
           produtos:n.produtos, mes:n.mes
         }));
         const {error} = await sb.from('vendas_xml').upsert(lote,{onConflict:'id'});
-        if(error) throw error;
+        if(error){ 
+          console.error('Supabase upsert error:', error);
+          throw new Error('Supabase: ' + (error.message||error.details||JSON.stringify(error)));
+        }
         document.getElementById('vendas-loading-txt').textContent=`Salvando... ${Math.min(i+200,novas.length)}/${novas.length}`;
       }
       toast(`${novas.length} notas importadas com sucesso!`,'success');
@@ -1971,10 +1976,21 @@ async function handleXmlZip(file){
     await loadVendasData();
 
   }catch(e){
-    console.error(e);
-    toast('Erro ao processar ZIP: '+e.message,'error');
+    console.error('Erro handleXmlZip:', e);
+    // Mostra erro persistente na tela
+    document.getElementById('vendas-loading-txt').textContent='Erro: '+( e.message || JSON.stringify(e) );
+    document.getElementById('vendas-loading-txt').style.color='var(--red)';
+    // Não esconde o loading para o usuário conseguir ler o erro
+    setTimeout(()=>{
+      document.getElementById('vendas-loading').style.display='none';
+      document.getElementById('vendas-loading-txt').style.color='';
+      document.getElementById('vendas-empty').style.display='block';
+    }, 8000); // fica visível por 8 segundos
+    return;
   }finally{
-    document.getElementById('vendas-loading').style.display='none';
+    if(document.getElementById('vendas-loading').style.display!=='none'){
+      document.getElementById('vendas-loading').style.display='none';
+    }
   }
 }
 
