@@ -2137,7 +2137,7 @@ function renderVendas(){
   document.getElementById('vendas-empty').style.display='none';
   document.getElementById('vendas-content').style.display='block';
 
-  // Popula filtros
+  // ── Popula filtros ────────────────────────────────────
   const mesSel = document.getElementById('vendas-mes');
   const empSel = document.getElementById('vendas-empresa');
   const curMes = mesSel.value; const curEmp = empSel.value;
@@ -2155,6 +2155,7 @@ function renderVendas(){
   });
   if(curEmp) empSel.value=curEmp;
 
+  // ── Dados filtrados ───────────────────────────────────
   const notas    = getVendasFiltradas();
   const validas  = notas.filter(n=>!n.cancelada);
   const canceladas = notas.filter(n=>n.cancelada);
@@ -2166,31 +2167,11 @@ function renderVendas(){
 
   document.getElementById('vendas-badge').textContent=`${notas.length} notas`;
 
-  // ── Agrega combustíveis e outros para cards ──────────
-  const totCombLiqCard = combustiveis.reduce((s,p)=>s+p.vLiq,0);
-  const totOutrosLiqCard = outros.reduce((s,p)=>s+p.vLiq,0);
-
-  // ── Cards ─────────────────────────────────────────────
-  document.getElementById('vendas-metrics').innerHTML=`
-    <div class="metric"><div class="metric-label">Faturamento líquido total</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas</div></div>
-    <div class="metric"><div class="metric-label">Combustíveis</div><div class="metric-val pos">${fmt(totCombLiqCard)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totCombLiqCard/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
-    <div class="metric"><div class="metric-label">Outros produtos</div><div class="metric-val pos">${fmt(totOutrosLiqCard)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totOutrosLiqCard/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
-    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>`;
-
-  // ── Alert cancelamentos ───────────────────────────────
-  const alertEl = document.getElementById('vendas-cancel-alert');
-  if(canceladas.length>0){
-    alertEl.style.display='flex';
-    document.getElementById('vendas-cancel-title').textContent=`${canceladas.length} notas canceladas — ${fmt(totCancelVl)}`;
-    document.getElementById('vendas-cancel-sub').textContent=`${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento bruto total`;
-  } else { alertEl.style.display='none'; }
-
-  // ── Agrega todos os produtos ──────────────────────────
-  const isCombustivel = nome => {
-    const n = nome.toUpperCase();
-    // Exclui produtos que contêm ADITIVO, LUBRIF, ARLA mesmo tendo diesel/etanol no nome
-    if(/aditivo|lubrif|arla|fluido|filtro/i.test(n)) return false;
-    return /gasolina|etanol|diesel/i.test(n);
+  // ── Agrega produtos (DEVE VIR ANTES DOS CARDS) ────────
+  const isCombustivel = n => {
+    const u = n.toUpperCase();
+    if(/aditivo|lubrif|arla|fluido|filtro/i.test(u)) return false;
+    return /gasolina|etanol|diesel/i.test(u);
   };
   const prodMap = {};
   validas.forEach(nota=>{
@@ -2204,11 +2185,32 @@ function renderVendas(){
       prodMap[nome].vLiq  += (p.vProd||0)-(p.vDesc||0);
     });
   });
-  const todosProds = Object.values(prodMap).sort((a,b)=>b.vLiq-a.vLiq);
+  const todosProds   = Object.values(prodMap).sort((a,b)=>b.vLiq-a.vLiq);
   const combustiveis = todosProds.filter(p=>isCombustivel(p.nome));
   const outros       = todosProds.filter(p=>!isCombustivel(p.nome));
   const totCombLiq   = combustiveis.reduce((s,p)=>s+p.vLiq,0);
-  const COLORS_PROD  = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#D4537E','#639922','#888780','#EF9F27','#E24B4A'];
+  const totOutrosLiq = outros.reduce((s,p)=>s+p.vLiq,0);
+
+  // ── Cards ─────────────────────────────────────────────
+  document.getElementById('vendas-metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">Faturamento líquido total</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas</div></div>
+    <div class="metric"><div class="metric-label">Combustíveis</div><div class="metric-val pos">${fmt(totCombLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totCombLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
+    <div class="metric"><div class="metric-label">Outros produtos</div><div class="metric-val pos">${fmt(totOutrosLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totOutrosLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
+    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>`;
+
+  // ── Alert cancelamentos ───────────────────────────────
+  const alertEl = document.getElementById('vendas-cancel-alert');
+  if(canceladas.length>0){
+    alertEl.style.display='flex';
+    const getTurno = hora => { if(!hora) return '—'; const h=parseInt(hora.split(':')[0]); if(h>=5&&h<14) return 'Turno 1'; return 'Turno 2'; };
+    const t1=canceladas.filter(n=>getTurno(n.hora_emissao)==='Turno 1').length;
+    const t2=canceladas.filter(n=>getTurno(n.hora_emissao)==='Turno 2').length;
+    const turnoMais = t1>=t2?`Turno 1 (${t1} cancel.)`:`Turno 2 (${t2} cancel.)`;
+    document.getElementById('vendas-cancel-title').textContent=`${canceladas.length} notas canceladas — ${fmt(totCancelVl)}`;
+    document.getElementById('vendas-cancel-sub').textContent=`${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento · Turno com mais cancelamentos: ${turnoMais}`;
+  } else { alertEl.style.display='none'; }
+
+  const COLORS_PROD = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#D4537E','#639922','#888780','#EF9F27','#E24B4A'];
 
   // ── Tabela combustíveis ───────────────────────────────
   document.getElementById('vendas-prod-tbody').innerHTML = combustiveis.map((p,i)=>{
@@ -2230,7 +2232,6 @@ function renderVendas(){
 
   // ── Top 10 outros produtos ────────────────────────────
   const top10 = outros.slice(0,10);
-  const totOutrosLiq = outros.reduce((s,p)=>s+p.vLiq,0);
   document.getElementById('vendas-outros-tbody').innerHTML = top10.map((p,i)=>{
     const pct = totOutrosLiq>0?p.vLiq/totOutrosLiq*100:0;
     return`<tr>
@@ -2246,26 +2247,16 @@ function renderVendas(){
   }).join('') || '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3)">Nenhum outro produto encontrado</td></tr>';
 
   // ── Tabela canceladas com horário e turno ─────────────
-  const getTurno = hora => {
+  const getTurno2 = hora => {
     if(!hora) return '—';
     const h = parseInt(hora.split(':')[0]);
-    if(h>=5 && h<14) return 'Turno 1 (05h–14h)';
+    if(h>=5&&h<14) return 'Turno 1 (05h–14h)';
     return 'Turno 2 (14h–00h)';
   };
-  const t1 = canceladas.filter(n=>{ const h=parseInt((n.hora_emissao||'00:00').split(':')[0]); return h>=5&&h<14; }).length;
-  const t2 = canceladas.filter(n=>{ const h=parseInt((n.hora_emissao||'00:00').split(':')[0]); return !(h>=5&&h<14); }).length;
-
-  // Atualiza alerta com info de turno
-  if(canceladas.length>0){
-    const turnoMais = t1>=t2?`Turno 1 (${t1} cancel.)`:`Turno 2 (${t2} cancel.)`;
-    document.getElementById('vendas-cancel-sub').textContent=
-      `${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento · Turno com mais cancelamentos: ${turnoMais}`;
-  }
-
   document.getElementById('vendas-cancel-tbody').innerHTML = canceladas.length===0?
     '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhuma nota cancelada no período</td></tr>':
     canceladas.sort((a,b)=>(a.data_emissao||'').localeCompare(b.data_emissao||'')).map(n=>{
-      const turno = getTurno(n.hora_emissao);
+      const turno = getTurno2(n.hora_emissao);
       const turnoColor = turno.includes('Turno 1')?'#3B8BD4':'#7F77DD';
       return`<tr>
         <td style="font-size:12px">${n.numero}</td>
@@ -2278,9 +2269,8 @@ function renderVendas(){
       </tr>`;
     }).join('');
 
-  const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
-
   // ── Gráfico mix combustíveis ──────────────────────────
+  const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
   const topComb = combustiveis.filter(p=>p.qtd>0).slice(0,6);
   const mixCols = topComb.map((_,i)=>COLORS_PROD[i]);
   if(chartVendasMix) chartVendasMix.destroy();
@@ -2292,11 +2282,9 @@ function renderVendas(){
   });
   document.getElementById('legend-vendas-mix').innerHTML=topComb.map((p,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${mixCols[i]}"></span>${p.nome}</span>`).join('');
 
-  // Atualiza badge de compras
+  // Badge compras e margens
   const cbadge = document.getElementById('compras-badge');
   if(cbadge) cbadge.textContent = comprasData.length ? `${comprasData.length} NFs de entrada` : '';
-
-  // Renderiza margens se há dados de compra
   if(comprasData.length) renderMargens();
 }
 
