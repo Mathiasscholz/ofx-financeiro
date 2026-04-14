@@ -528,6 +528,24 @@ tbody tr:hover td{background:var(--bg)}
             </div>
           </div>
 
+          <!-- Top 10 outros produtos -->
+          <div class="table-section">
+            <div class="table-header">
+              <h3>Top 10 outros produtos (não combustíveis)</h3>
+              <span style="font-size:11px;color:var(--text3)">Por quantidade e valor — excluindo combustíveis</span>
+            </div>
+            <div class="table-wrap">
+              <table><thead><tr>
+                <th style="width:32px">#</th>
+                <th>Produto</th>
+                <th style="text-align:right">Qtd vendida</th>
+                <th style="text-align:right">Faturamento líquido</th>
+                <th>Participação</th>
+              </tr></thead>
+              <tbody id="vendas-outros-tbody"></tbody></table>
+            </div>
+          </div>
+
           <!-- Tabela canceladas (oculta por padrão) -->
           <div id="vendas-cancel-table" style="display:none" class="table-section">
             <div class="table-header">
@@ -536,7 +554,7 @@ tbody tr:hover td{background:var(--bg)}
             </div>
             <div class="table-wrap">
               <table><thead><tr>
-                <th>NF</th><th>Data</th><th>Empresa</th><th>Tipo</th><th style="text-align:right">Valor</th><th>Justificativa</th>
+                <th>NF</th><th>Data</th><th>Horário</th><th>Turno</th><th>Empresa</th><th>Tipo</th><th style="text-align:right">Valor</th>
               </tr></thead>
               <tbody id="vendas-cancel-tbody"></tbody></table>
             </div>
@@ -1854,6 +1872,7 @@ function parseXmlNota(xmlStr){
     const serie  = getTagNS(infNFe,'serie');
     const dhEmi  = getTagNS(infNFe,'dhEmi');
     const data   = dhEmi ? dhEmi.slice(0,10) : '';
+    const hora   = dhEmi && dhEmi.length>=16 ? dhEmi.slice(11,16) : '';
     const mes    = data.slice(0,7);
 
     const emit   = infNFe.getElementsByTagNameNS(NS,'emit')[0];
@@ -1890,7 +1909,7 @@ function parseXmlNota(xmlStr){
     const xJust = root.getElementsByTagNameNS(NS,'xJust')[0];
     if(xJust) justificativa = xJust.textContent.trim();
 
-    return { id:chave||`${cnpj}_${nNF}_${serie}`, modelo:mod, numero:nNF, serie, data, mes,
+    return { id:chave||`${cnpj}_${nNF}_${serie}`, modelo:mod, numero:nNF, serie, data, hora, mes,
       empresa:xNome, cnpj_emitente:cnpj, valor_bruto:vProd, valor_desconto:vDesc,
       valor_liquido:vNF, cancelada, justificativa, produtos, tipo:'nota' };
   }catch(e){ return null; }
@@ -1956,7 +1975,7 @@ async function handleXmlZip(file){
       for(let i=0;i<novas.length;i+=200){
         const lote = novas.slice(i,i+200).map(n=>({
           id:n.id, modelo:n.modelo, numero:n.numero, serie:n.serie,
-          data_emissao:n.data||null, empresa:n.empresa, cnpj_emitente:n.cnpj_emitente,
+          data_emissao:n.data||null, hora_emissao:n.hora||null, empresa:n.empresa, cnpj_emitente:n.cnpj_emitente,
           valor_bruto:n.valor_bruto, valor_desconto:n.valor_desconto, valor_liquido:n.valor_liquido,
           cancelada:n.cancelada, justificativa:n.justificativa||'',
           produtos:n.produtos, mes:n.mes
@@ -2040,7 +2059,6 @@ function renderVendas(){
   const mesSel = document.getElementById('vendas-mes');
   const empSel = document.getElementById('vendas-empresa');
   const curMes = mesSel.value; const curEmp = empSel.value;
-
   mesSel.innerHTML='<option value="">Todo o período</option>';
   [...new Set(vendasData.map(n=>n.mes).filter(Boolean))].sort().forEach(m=>{
     const[y,mo]=m.split('-');
@@ -2049,129 +2067,153 @@ function renderVendas(){
     mesSel.appendChild(o);
   });
   if(curMes) mesSel.value=curMes;
-
   empSel.innerHTML='<option value="">Todas</option>';
   [...new Map(vendasData.map(n=>[n.cnpj_emitente,n.empresa]))].forEach(([cnpj,nome])=>{
-    const o=document.createElement('option'); o.value=cnpj; o.textContent=nome||cnpj;
-    empSel.appendChild(o);
+    const o=document.createElement('option'); o.value=cnpj; o.textContent=nome||cnpj; empSel.appendChild(o);
   });
   if(curEmp) empSel.value=curEmp;
 
-  const notas = getVendasFiltradas();
-  const validas = notas.filter(n=>!n.cancelada);
+  const notas    = getVendasFiltradas();
+  const validas  = notas.filter(n=>!n.cancelada);
   const canceladas = notas.filter(n=>n.cancelada);
 
   const totBruto   = validas.reduce((s,n)=>s+(n.valor_bruto||0),0);
   const totLiquido = validas.reduce((s,n)=>s+(n.valor_liquido||0),0);
   const totDesc    = validas.reduce((s,n)=>s+(n.valor_desconto||0),0);
-  const ticketMed  = validas.length ? totLiquido/validas.length : 0;
   const totCancelVl= canceladas.reduce((s,n)=>s+(n.valor_liquido||0),0);
 
   document.getElementById('vendas-badge').textContent=`${notas.length} notas`;
 
-  // Cards
+  // ── Cards (sem ticket médio) ───────────────────────────
   document.getElementById('vendas-metrics').innerHTML=`
-    <div class="metric"><div class="metric-label">Faturamento líquido</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)}</div></div>
-    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>
-    <div class="metric"><div class="metric-label">Ticket médio por nota</div><div class="metric-val">${fmt(ticketMed)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${validas.length} notas válidas</div></div>`;
+    <div class="metric"><div class="metric-label">Faturamento líquido</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas válidas</div></div>
+    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do faturamento bruto</div></div>`;
 
-  // Alert cancelamentos
+  // ── Alert cancelamentos ───────────────────────────────
   const alertEl = document.getElementById('vendas-cancel-alert');
   if(canceladas.length>0){
     alertEl.style.display='flex';
     document.getElementById('vendas-cancel-title').textContent=`${canceladas.length} notas canceladas — ${fmt(totCancelVl)}`;
     document.getElementById('vendas-cancel-sub').textContent=`${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento bruto total`;
-  } else {
-    alertEl.style.display='none';
-  }
+  } else { alertEl.style.display='none'; }
 
-  // Tabela canceladas
-  document.getElementById('vendas-cancel-tbody').innerHTML = canceladas.length===0?
-    '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text3)">Nenhuma nota cancelada no período</td></tr>':
-    canceladas.map(n=>`<tr>
-      <td style="font-size:12px">${n.numero}</td>
-      <td style="font-size:12px;color:var(--text2)">${fmtDate(n.data_emissao)}</td>
-      <td style="font-size:12px">${n.empresa||'—'}</td>
-      <td><span class="badge ${n.modelo==='65'?'badge-blue':'badge-green'}">${n.modelo==='65'?'NFC-e':'NF-e'}</span></td>
-      <td style="text-align:right;font-weight:600;color:var(--red);font-size:12px">${fmt(n.valor_liquido)}</td>
-      <td style="font-size:11px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${n.justificativa||'—'}</td>
-    </tr>`).join('');
-
-  // Agrega produtos
+  // ── Agrega todos os produtos ──────────────────────────
+  const isCombustivel = nome => /gasolina|etanol|diesel/i.test(nome);
   const prodMap = {};
   validas.forEach(nota=>{
     (nota.produtos||[]).forEach(p=>{
       if(!p.nome) return;
       const nome = p.nome.trim();
-      if(!prodMap[nome]) prodMap[nome]={nome,qtd:0,vBruto:0,vDesc:0,vLiq:0,litros:true};
+      if(!prodMap[nome]) prodMap[nome]={nome,qtd:0,vBruto:0,vDesc:0,vLiq:0};
       prodMap[nome].qtd   += p.qtd||0;
       prodMap[nome].vBruto+= p.vProd||0;
       prodMap[nome].vDesc += p.vDesc||0;
       prodMap[nome].vLiq  += (p.vProd||0)-(p.vDesc||0);
     });
   });
+  const todosProds = Object.values(prodMap).sort((a,b)=>b.vLiq-a.vLiq);
+  const combustiveis = todosProds.filter(p=>isCombustivel(p.nome));
+  const outros       = todosProds.filter(p=>!isCombustivel(p.nome));
+  const totCombLiq   = combustiveis.reduce((s,p)=>s+p.vLiq,0);
+  const COLORS_PROD  = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#D4537E','#639922','#888780','#EF9F27','#E24B4A'];
 
-  const prods = Object.values(prodMap).sort((a,b)=>b.vLiq-a.vLiq);
-  const totProdLiq = prods.reduce((s,p)=>s+p.vLiq,0);
-  const COLORS_PROD = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#D4537E','#639922','#888780','#EF9F27','#E24B4A'];
-
-  // Tabela produtos
-  document.getElementById('vendas-prod-tbody').innerHTML = prods.map((p,i)=>{
-    const pct = totProdLiq>0?p.vLiq/totProdLiq*100:0;
+  // ── Tabela combustíveis ───────────────────────────────
+  document.getElementById('vendas-prod-tbody').innerHTML = combustiveis.map((p,i)=>{
+    const pct = totCombLiq>0?p.vLiq/totCombLiq*100:0;
     const precoMed = p.qtd>0?p.vLiq/p.qtd:0;
     return`<tr>
       <td style="font-weight:500;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${COLORS_PROD[i%COLORS_PROD.length]};display:inline-block;margin-right:8px;vertical-align:middle"></span>${p.nome}</td>
-      <td style="text-align:right;font-size:12px;font-family:'DM Mono',monospace">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-size:12px;font-family:'DM Mono',monospace">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})} L</td>
       <td style="text-align:right;font-size:12px" class="amount-pos">${fmt(p.vBruto)}</td>
       <td style="text-align:right;font-size:12px" class="${p.vDesc>0?'amount-neg':''}">${p.vDesc>0?'- '+fmt(p.vDesc):'—'}</td>
       <td style="text-align:right;font-size:12px;font-weight:600" class="amount-pos">${fmt(p.vLiq)}</td>
-      <td style="text-align:right;font-size:12px;color:var(--text2)">${precoMed>0?'R$ '+precoMed.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4}):'—'}</td>
-      <td style="width:120px">
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:${COLORS_PROD[i%COLORS_PROD.length]};border-radius:3px"></div></div>
-          <span style="font-size:11px;color:var(--text2);min-width:34px;text-align:right">${pct.toFixed(1)}%</span>
-        </div>
-      </td>
+      <td style="text-align:right;font-size:12px;color:var(--text2)">${precoMed>0?'R$ '+precoMed.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4}):'—'}/L</td>
+      <td style="width:120px"><div style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:${COLORS_PROD[i%COLORS_PROD.length]};border-radius:3px"></div></div>
+        <span style="font-size:11px;color:var(--text2);min-width:34px;text-align:right">${pct.toFixed(1)}%</span>
+      </div></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum produto encontrado</td></tr>';
+  }).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum combustível encontrado</td></tr>';
 
-  // Gráfico diário
+  // ── Top 10 outros produtos ────────────────────────────
+  const top10 = outros.slice(0,10);
+  const totOutrosLiq = outros.reduce((s,p)=>s+p.vLiq,0);
+  document.getElementById('vendas-outros-tbody').innerHTML = top10.map((p,i)=>{
+    const pct = totOutrosLiq>0?p.vLiq/totOutrosLiq*100:0;
+    return`<tr>
+      <td style="text-align:center;font-size:11px;font-weight:600;color:var(--text3);width:32px">${i+1}</td>
+      <td style="font-weight:500;font-size:12px">${p.nome}</td>
+      <td style="text-align:right;font-size:12px;font-family:'DM Mono',monospace">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
+      <td style="text-align:right;font-size:12px;font-weight:600" class="amount-pos">${fmt(p.vLiq)}</td>
+      <td style="width:100px"><div style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:#EF9F27;border-radius:3px"></div></div>
+        <span style="font-size:11px;color:var(--text2);min-width:30px;text-align:right">${pct.toFixed(1)}%</span>
+      </div></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3)">Nenhum outro produto encontrado</td></tr>';
+
+  // ── Tabela canceladas com horário e turno ─────────────
+  const getTurno = hora => {
+    if(!hora) return '—';
+    const h = parseInt(hora.split(':')[0]);
+    if(h>=5 && h<14) return 'Turno 1 (05h–14h)';
+    return 'Turno 2 (14h–00h)';
+  };
+  const t1 = canceladas.filter(n=>{ const h=parseInt((n.hora_emissao||'00:00').split(':')[0]); return h>=5&&h<14; }).length;
+  const t2 = canceladas.filter(n=>{ const h=parseInt((n.hora_emissao||'00:00').split(':')[0]); return !(h>=5&&h<14); }).length;
+
+  // Atualiza alerta com info de turno
+  if(canceladas.length>0){
+    const turnoMais = t1>=t2?`Turno 1 (${t1} cancel.)`:`Turno 2 (${t2} cancel.)`;
+    document.getElementById('vendas-cancel-sub').textContent=
+      `${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento · Turno com mais cancelamentos: ${turnoMais}`;
+  }
+
+  document.getElementById('vendas-cancel-tbody').innerHTML = canceladas.length===0?
+    '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhuma nota cancelada no período</td></tr>':
+    canceladas.sort((a,b)=>(a.data_emissao||'').localeCompare(b.data_emissao||'')).map(n=>{
+      const turno = getTurno(n.hora_emissao);
+      const turnoColor = turno.includes('Turno 1')?'#3B8BD4':'#7F77DD';
+      return`<tr>
+        <td style="font-size:12px">${n.numero}</td>
+        <td style="font-size:12px;color:var(--text2);white-space:nowrap">${fmtDate(n.data_emissao)}</td>
+        <td style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text2)">${n.hora_emissao||'—'}</td>
+        <td><span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${turnoColor}18;color:${turnoColor};font-weight:500">${turno}</span></td>
+        <td style="font-size:12px">${n.empresa||'—'}</td>
+        <td><span class="badge ${n.modelo==='65'?'badge-blue':'badge-green'}">${n.modelo==='65'?'NFC-e':'NF-e'}</span></td>
+        <td style="text-align:right;font-weight:600;color:var(--red);font-size:12px">${fmt(n.valor_liquido)}</td>
+      </tr>`;
+    }).join('');
+
+  // ── Gráfico diário ────────────────────────────────────
   const porDia = {};
   validas.forEach(n=>{ if(n.data_emissao){ porDia[n.data_emissao]=(porDia[n.data_emissao]||0)+(n.valor_liquido||0); } });
   const diasLabels = Object.keys(porDia).sort();
   const diasVals   = diasLabels.map(d=>+porDia[d].toFixed(2));
   const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
-
   if(chartVendasDia) chartVendasDia.destroy();
   chartVendasDia = new Chart(document.getElementById('chart-vendas-dia'),{
     type:'bar',
     data:{labels:diasLabels.map(d=>{const[y,m,dia]=d.split('-');return`${dia}/${m}`;}),
       datasets:[{data:diasVals,backgroundColor:'rgba(59,139,212,.7)',borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
-      tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
       scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:45,autoSkip:diasLabels.length>20},grid:{display:false}},
               y:{ticks:{color:tc,font:{size:9},callback:v=>'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v)},grid:{color:gc}}}}
   });
 
-  // Gráfico mix (top 6 produtos por volume)
-  const topProds = prods.filter(p=>p.qtd>0).slice(0,6);
-  const mixCols  = topProds.map((_,i)=>COLORS_PROD[i]);
-
+  // ── Gráfico mix combustíveis ──────────────────────────
+  const topComb = combustiveis.filter(p=>p.qtd>0).slice(0,6);
+  const mixCols = topComb.map((_,i)=>COLORS_PROD[i]);
   if(chartVendasMix) chartVendasMix.destroy();
   chartVendasMix = new Chart(document.getElementById('chart-vendas-mix'),{
     type:'doughnut',
-    data:{labels:topProds.map(p=>p.nome),datasets:[{data:topProds.map(p=>+p.qtd.toFixed(2)),backgroundColor:mixCols,borderWidth:0,hoverOffset:5}]},
+    data:{labels:topComb.map(p=>p.nome),datasets:[{data:topComb.map(p=>+p.qtd.toFixed(2)),backgroundColor:mixCols,borderWidth:0,hoverOffset:5}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'65%',
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.toLocaleString('pt-BR',{maximumFractionDigits:2})} L/un`}}}}
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.toLocaleString('pt-BR',{maximumFractionDigits:2})} L`}}}}
   });
-  document.getElementById('legend-vendas-mix').innerHTML=topProds.map((p,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${mixCols[i]}"></span>${p.nome}</span>`).join('');
+  document.getElementById('legend-vendas-mix').innerHTML=topComb.map((p,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${mixCols[i]}"></span>${p.nome}</span>`).join('');
 }
 
-function showCanceladas(){
-  const el = document.getElementById('vendas-cancel-table');
-  el.style.display = el.style.display==='none'?'block':'none';
-  if(el.style.display==='block') el.scrollIntoView({behavior:'smooth',block:'nearest'});
-}
 
 async function clearVendasXml(){
   if(!confirm('Apagar todos os dados de vendas XML? Esta ação não pode ser desfeita.')) return;
