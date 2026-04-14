@@ -1386,7 +1386,7 @@ async function changeCategory(id,cat){
 
 // ── Análise por categoria ─────────────────────────────────
 // Categorias excluídas da análise (CMV)
-const CAT_EXCLUIR = n => /combustiv|maquininha|cartão|cartoes|^produtos?$/i.test(n||'');
+const CAT_EXCLUIR = n => /combustiv|maquininha.*cart|^produtos?$/i.test(n||'');
 
 function renderAnaliseCat(){
   const mesSel=document.getElementById('filter-cat-mes');
