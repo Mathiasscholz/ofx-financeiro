@@ -505,6 +505,20 @@ tbody tr:hover td{background:var(--bg)}
             <button class="btn btn-sm" onclick="showCanceladas()" style="border-color:rgba(192,57,43,.4);color:var(--red)">Ver canceladas</button>
           </div>
 
+          <!-- Cards de margem geral -->
+          <div id="margem-cards-row" style="display:none;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:0" class="metrics-row">
+            <div class="metric" style="border-left:4px solid #1D9E75">
+              <div class="metric-label">Margem média — Combustíveis</div>
+              <div class="metric-val pos" id="card-margem-comb-val">—</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px" id="card-margem-comb-sub">Importe NF-e de entrada para calcular</div>
+            </div>
+            <div class="metric" style="border-left:4px solid #EF9F27">
+              <div class="metric-label">Margem líquida — Outros produtos</div>
+              <div class="metric-val" style="color:#BA7517" id="card-margem-outros-val">—</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px" id="card-margem-outros-sub">% líquido sobre bruto (sem custo de compra)</div>
+            </div>
+          </div>
+
           <!-- Mix + Margem média -->
           <div class="charts-grid">
             <div class="chart-card"><div class="chart-title">Mix de combustíveis (volume em litros)</div><div class="legend-row" id="legend-vendas-mix"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-vendas-mix"></canvas></div></div>
@@ -2544,6 +2558,47 @@ function renderMargens(){
               y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}
   });
   document.getElementById('legend-margem-comb').innerHTML=combs.map((c,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${COLORS[i%COLORS.length]}"></span>${c} <strong>${margemMedia[i].toFixed(1)}%</strong></span>`).join('');
+
+  // ── Cards de margem geral ─────────────────────────────
+  const margemGeralComb = margemMedia.filter(v=>v>0);
+  const margemMediaGeral = margemGeralComb.length
+    ? +(margemGeralComb.reduce((s,v)=>s+v,0)/margemGeralComb.length).toFixed(1)
+    : null;
+
+  // Margem outros: % líquido/bruto das vendas sem combustível
+  const notas2 = getVendasFiltradas ? getVendasFiltradas() : vendasData;
+  let vBrutoOutros=0, vLiqOutros=0;
+  notas2.filter(n=>!n.cancelada).forEach(nota=>{
+    (nota.produtos||[]).filter(p=>p.nome&&!isComb(p.nome)).forEach(p=>{
+      vBrutoOutros += p.vProd||0;
+      vLiqOutros   += (p.vProd||0)-(p.vDesc||0);
+    });
+  });
+  const margemOutrosGeral = vBrutoOutros>0
+    ? +((vLiqOutros/vBrutoOutros)*100).toFixed(1)
+    : null;
+
+  // Atualiza cards
+  const row = document.getElementById('margem-cards-row');
+  if(row) row.style.display='grid';
+
+  const cardCombVal = document.getElementById('card-margem-comb-val');
+  const cardCombSub = document.getElementById('card-margem-comb-sub');
+  if(cardCombVal){
+    cardCombVal.textContent = margemMediaGeral!==null ? margemMediaGeral+'%' : '—';
+    if(cardCombSub) cardCombSub.textContent = margemMediaGeral!==null
+      ? `Média ponderada de ${combs.length} tipo(s) de combustível`
+      : 'Sem dados suficientes de compra';
+  }
+
+  const cardOutrosVal = document.getElementById('card-margem-outros-val');
+  const cardOutrosSub = document.getElementById('card-margem-outros-sub');
+  if(cardOutrosVal){
+    cardOutrosVal.textContent = margemOutrosGeral!==null ? margemOutrosGeral+'%' : '—';
+    if(cardOutrosSub) cardOutrosSub.textContent = margemOutrosGeral!==null
+      ? `Sobre R$ ${fmt(vBrutoOutros)} em vendas brutas de outros produtos`
+      : 'Sem dados de outros produtos';
+  }
 
   // ── Gráfico margem outros produtos por mês ───────────────
   const margemOutrosMes = meses.map(mes=>{
