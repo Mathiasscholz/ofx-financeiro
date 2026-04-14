@@ -505,10 +505,39 @@ tbody tr:hover td{background:var(--bg)}
             <button class="btn btn-sm" onclick="showCanceladas()" style="border-color:rgba(192,57,43,.4);color:var(--red)">Ver canceladas</button>
           </div>
 
-          <!-- Gráfico diário + Mix -->
+          <!-- Mix + Margem média -->
           <div class="charts-grid">
-            <div class="chart-card"><div class="chart-title">Faturamento diário</div><div class="chart-wrap" style="height:200px"><canvas id="chart-vendas-dia"></canvas></div></div>
-            <div class="chart-card"><div class="chart-title">Mix de produtos (volume em litros)</div><div class="legend-row" id="legend-vendas-mix"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-vendas-mix"></canvas></div></div>
+            <div class="chart-card"><div class="chart-title">Mix de combustíveis (volume em litros)</div><div class="legend-row" id="legend-vendas-mix"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-vendas-mix"></canvas></div></div>
+            <div class="chart-card"><div class="chart-title">Margem média por combustível</div><div class="legend-row" id="legend-margem-comb"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-margem-comb"></canvas></div></div>
+          </div>
+
+          <!-- Margem por mês combustíveis -->
+          <div class="chart-card chart-card-full">
+            <div class="chart-title">Histórico de margem por combustível — por mês</div>
+            <div class="legend-row" id="legend-margem-mes"></div>
+            <div class="chart-wrap" style="height:220px"><canvas id="chart-margem-mes"></canvas></div>
+          </div>
+
+          <!-- Margem outros produtos por mês -->
+          <div class="chart-card chart-card-full">
+            <div class="chart-title">Margem média mensal — outros produtos (não combustíveis)</div>
+            <div class="chart-wrap" style="height:180px"><canvas id="chart-margem-outros"></canvas></div>
+          </div>
+
+          <!-- Botão importar entradas -->
+          <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="font-size:13px;font-weight:600">NF-e de Entrada (compras)</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">Importe as notas de compra do fornecedor para calcular a margem de lucro real por combustível</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="compras-badge" class="tx-count"></span>
+              <button class="btn btn-primary" onclick="document.getElementById('xml-compras-input').click()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Importar entradas (ZIP)
+              </button>
+              <input type="file" id="xml-compras-input" accept=".zip" style="display:none" onchange="handleComprasZip(this.files[0])">
+            </div>
           </div>
 
           <!-- Tabela produtos -->
@@ -870,6 +899,18 @@ async function loadAll(){
     }
     vendasData = vrows;
   }catch(e){ console.error('Erro vendas XML:',e); vendasData=[]; }
+
+  try{
+    let crow=[], cfrom=0;
+    while(true){
+      const rc = await sb.from('compras_xml').select('*').range(cfrom,cfrom+999);
+      if(rc.error) throw rc.error;
+      crow=crow.concat(rc.data||[]);
+      if((rc.data||[]).length<1000) break;
+      cfrom+=1000;
+    }
+    comprasData = crow;
+  }catch(e){ console.error('Erro compras XML:',e); comprasData=[]; }
 }
 
 // ── Aprendizado por regras ────────────────────────────────
@@ -1841,8 +1882,8 @@ function renderFundoTabela(){
 
 
 // ── Vendas XML ────────────────────────────────────────────
-let vendasData = []; // cache em memória
-let chartVendasDia = null, chartVendasMix = null;
+let vendasData = [], comprasData = [];
+let chartVendasMix = null, chartMargemComb = null, chartMargemMes = null, chartMargemOutros = null;
 
 const NS = 'http://www.portalfiscal.inf.br/nfe';
 
@@ -2084,10 +2125,16 @@ function renderVendas(){
 
   document.getElementById('vendas-badge').textContent=`${notas.length} notas`;
 
-  // ── Cards (sem ticket médio) ───────────────────────────
+  // ── Agrega combustíveis e outros para cards ──────────
+  const totCombLiqCard = combustiveis.reduce((s,p)=>s+p.vLiq,0);
+  const totOutrosLiqCard = outros.reduce((s,p)=>s+p.vLiq,0);
+
+  // ── Cards ─────────────────────────────────────────────
   document.getElementById('vendas-metrics').innerHTML=`
-    <div class="metric"><div class="metric-label">Faturamento líquido</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas válidas</div></div>
-    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do faturamento bruto</div></div>`;
+    <div class="metric"><div class="metric-label">Faturamento líquido total</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas</div></div>
+    <div class="metric"><div class="metric-label">Combustíveis</div><div class="metric-val pos">${fmt(totCombLiqCard)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totCombLiqCard/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
+    <div class="metric"><div class="metric-label">Outros produtos</div><div class="metric-val pos">${fmt(totOutrosLiqCard)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totOutrosLiqCard/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
+    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>`;
 
   // ── Alert cancelamentos ───────────────────────────────
   const alertEl = document.getElementById('vendas-cancel-alert');
@@ -2098,7 +2145,12 @@ function renderVendas(){
   } else { alertEl.style.display='none'; }
 
   // ── Agrega todos os produtos ──────────────────────────
-  const isCombustivel = nome => /gasolina|etanol|diesel/i.test(nome);
+  const isCombustivel = nome => {
+    const n = nome.toUpperCase();
+    // Exclui produtos que contêm ADITIVO, LUBRIF, ARLA mesmo tendo diesel/etanol no nome
+    if(/aditivo|lubrif|arla|fluido|filtro/i.test(n)) return false;
+    return /gasolina|etanol|diesel/i.test(n);
+  };
   const prodMap = {};
   validas.forEach(nota=>{
     (nota.produtos||[]).forEach(p=>{
@@ -2185,21 +2237,7 @@ function renderVendas(){
       </tr>`;
     }).join('');
 
-  // ── Gráfico diário ────────────────────────────────────
-  const porDia = {};
-  validas.forEach(n=>{ if(n.data_emissao){ porDia[n.data_emissao]=(porDia[n.data_emissao]||0)+(n.valor_liquido||0); } });
-  const diasLabels = Object.keys(porDia).sort();
-  const diasVals   = diasLabels.map(d=>+porDia[d].toFixed(2));
   const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
-  if(chartVendasDia) chartVendasDia.destroy();
-  chartVendasDia = new Chart(document.getElementById('chart-vendas-dia'),{
-    type:'bar',
-    data:{labels:diasLabels.map(d=>{const[y,m,dia]=d.split('-');return`${dia}/${m}`;}),
-      datasets:[{data:diasVals,backgroundColor:'rgba(59,139,212,.7)',borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
-      scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:45,autoSkip:diasLabels.length>20},grid:{display:false}},
-              y:{ticks:{color:tc,font:{size:9},callback:v=>'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v)},grid:{color:gc}}}}
-  });
 
   // ── Gráfico mix combustíveis ──────────────────────────
   const topComb = combustiveis.filter(p=>p.qtd>0).slice(0,6);
@@ -2212,6 +2250,13 @@ function renderVendas(){
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.toLocaleString('pt-BR',{maximumFractionDigits:2})} L`}}}}
   });
   document.getElementById('legend-vendas-mix').innerHTML=topComb.map((p,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${mixCols[i]}"></span>${p.nome}</span>`).join('');
+
+  // Atualiza badge de compras
+  const cbadge = document.getElementById('compras-badge');
+  if(cbadge) cbadge.textContent = comprasData.length ? `${comprasData.length} NFs de entrada` : '';
+
+  // Renderiza margens se há dados de compra
+  if(comprasData.length) renderMargens();
 }
 
 
@@ -2315,3 +2360,243 @@ document.addEventListener('click', function(e){
 </div>
 </body>
 </html>
+// ── Compras XML (NF-e entrada) ────────────────────────────
+async function handleComprasZip(file){
+  if(!file) return;
+  toast('Processando ZIP de entradas...','success');
+  try{
+    if(!window.JSZip){
+      await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+    }
+    const zip = await JSZip.loadAsync(file);
+    const xmlFiles = Object.keys(zip.files).filter(n=>n.toLowerCase().endsWith('.xml')&&!zip.files[n].dir&&!n.toUpperCase().includes('CANCELADA'));
+    const compras = [];
+    for(const name of xmlFiles){
+      const xmlStr = await zip.files[name].async('string');
+      const c = parseXmlCompra(xmlStr);
+      if(c) compras.push(c);
+    }
+    if(!compras.length){ toast('Nenhuma NF-e de entrada encontrada','error'); return; }
+
+    // Busca IDs existentes
+    const existRes = await sb.from('compras_xml').select('id');
+    const existIds = new Set((existRes.data||[]).map(r=>r.id));
+    const novas = compras.filter(c=>!existIds.has(c.id));
+
+    if(novas.length>0){
+      for(let i=0;i<novas.length;i+=200){
+        const lote = novas.slice(i,i+200).map(c=>({
+          id:c.id, numero:c.numero, serie:c.serie, data_emissao:c.data||null,
+          mes:c.mes, fornecedor:c.fornecedor, cnpj_fornecedor:c.cnpj_fornecedor,
+          destinatario:c.destinatario, cnpj_destinatario:c.cnpj_destinatario,
+          valor_total:c.valor_total, produtos:c.produtos
+        }));
+        const {error} = await sb.from('compras_xml').upsert(lote,{onConflict:'id'});
+        if(error) throw new Error(error.message);
+      }
+      toast(`${novas.length} NF-e de entrada importadas!`,'success');
+    } else {
+      toast('Nenhuma nota nova encontrada','success');
+    }
+    await loadComprasData();
+  }catch(e){ console.error(e); toast('Erro: '+e.message,'error'); }
+}
+
+function parseXmlCompra(xmlStr){
+  try{
+    const doc = new DOMParser().parseFromString(xmlStr,'text/xml');
+    const root = doc.documentElement;
+    const infNFe = root.getElementsByTagNameNS(NS,'infNFe')[0];
+    if(!infNFe) return null;
+    const mod = getTagNS(infNFe,'mod');
+    if(mod!=='55') return null; // só NF-e modelo 55
+    const tpNF = getTagNS(infNFe,'tpNF');
+    if(tpNF!=='0') return null; // só entradas (0=entrada, 1=saída)
+
+    const nNF   = getTagNS(infNFe,'nNF');
+    const serie = getTagNS(infNFe,'serie');
+    const dhEmi = getTagNS(infNFe,'dhEmi');
+    const data  = dhEmi?dhEmi.slice(0,10):'';
+    const mes   = data.slice(0,7);
+    const chave = (infNFe.getAttribute('Id')||'').replace('NFe','');
+
+    const emit  = infNFe.getElementsByTagNameNS(NS,'emit')[0];
+    const dest  = infNFe.getElementsByTagNameNS(NS,'dest')[0];
+    const fornecedor       = emit?getTagNS(emit,'xNome'):'';
+    const cnpj_fornecedor  = emit?getTagNS(emit,'CNPJ'):'';
+    const destinatario     = dest?getTagNS(dest,'xNome'):'';
+    const cnpj_destinatario= dest?getTagNS(dest,'CNPJ'):'';
+    const vNF = parseFloat(getTagNS(infNFe,'vNF')||'0');
+
+    const dets = infNFe.getElementsByTagNameNS(NS,'det');
+    const produtos = [];
+    for(const det of dets){
+      const xProd = getTagNS(det,'xProd');
+      const qCom  = parseFloat(getTagNS(det,'qCom')||'0');
+      const vProd = parseFloat(getTagNS(det,'vProd')||'0');
+      const vUnCom= parseFloat(getTagNS(det,'vUnCom')||'0');
+      const uCom  = getTagNS(det,'uCom');
+      if(xProd) produtos.push({nome:xProd,qtd:qCom,unidade:uCom,vProd,vUnCom});
+    }
+    return {id:chave||`${cnpj_fornecedor}_${nNF}_${serie}`,numero:nNF,serie,data,mes,
+      fornecedor,cnpj_fornecedor,destinatario,cnpj_destinatario,valor_total:vNF,produtos};
+  }catch(e){ return null; }
+}
+
+async function loadComprasData(){
+  try{
+    let all=[], from=0;
+    while(true){
+      const r = await sb.from('compras_xml').select('*').range(from,from+999);
+      if(r.error) throw r.error;
+      all=all.concat(r.data||[]);
+      if((r.data||[]).length<1000) break;
+      from+=1000;
+    }
+    comprasData = all;
+    const el = document.getElementById('compras-badge');
+    if(el) el.textContent = all.length ? `${all.length} NFs de entrada` : '';
+    renderMargens();
+  }catch(e){ console.error('Erro compras:',e); }
+}
+
+// ── Calcula e renderiza gráficos de margem ─────────────────
+function renderMargens(){
+  if(!comprasData.length) return;
+
+  const isComb = n => {
+    const u = n.toUpperCase();
+    if(/aditivo|lubrif|arla|fluido|filtro/i.test(u)) return false;
+    return /gasolina|etanol|diesel/i.test(u);
+  };
+
+  // Custo por mês por combustível (das compras)
+  const custoMes = {}; // {mes: {produto: {qtd, vTotal}}}
+  comprasData.forEach(nota=>{
+    if(!nota.mes) return;
+    if(!custoMes[nota.mes]) custoMes[nota.mes]={};
+    (nota.produtos||[]).forEach(p=>{
+      if(!isComb(p.nome)) return;
+      const nome = normalizaComb(p.nome);
+      if(!custoMes[nota.mes][nome]) custoMes[nota.mes][nome]={qtd:0,vTotal:0};
+      custoMes[nota.mes][nome].qtd   += p.qtd||0;
+      custoMes[nota.mes][nome].vTotal += p.vProd||0;
+    });
+  });
+
+  // Venda por mês por combustível (das vendas)
+  const vendaMes = {}; // {mes: {produto: {qtd, vTotal}}}
+  const notas = getVendasFiltradas ? getVendasFiltradas() : vendasData;
+  notas.filter(n=>!n.cancelada).forEach(nota=>{
+    if(!nota.mes) return;
+    if(!vendaMes[nota.mes]) vendaMes[nota.mes]={};
+    (nota.produtos||[]).forEach(p=>{
+      if(!isComb(p.nome)) return;
+      const nome = normalizaComb(p.nome);
+      if(!vendaMes[nota.mes][nome]) vendaMes[nota.mes][nome]={qtd:0,vTotal:0};
+      vendaMes[nota.mes][nome].qtd   += p.qtd||0;
+      vendaMes[nota.mes][nome].vTotal += (p.vProd||0)-(p.vDesc||0);
+    });
+  });
+
+  // Meses e combustíveis únicos
+  const meses = [...new Set([...Object.keys(custoMes),...Object.keys(vendaMes)])].sort();
+  const combs  = [...new Set([
+    ...Object.values(custoMes).flatMap(m=>Object.keys(m)),
+    ...Object.values(vendaMes).flatMap(m=>Object.keys(m))
+  ])].sort();
+
+  const COLORS = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#EF9F27'];
+  const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
+  const mesLabels = meses.map(m=>{ const[y,mo]=m.split('-'); return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y.slice(2); });
+
+  // ── Gráfico margem por mês por combustível (linhas) ─────
+  const datasets = combs.map((comb,ci)=>({
+    label: comb,
+    data: meses.map(mes=>{
+      const custo = custoMes[mes]?.[comb];
+      const venda = vendaMes[mes]?.[comb];
+      if(!custo||!venda||!custo.qtd||!venda.qtd) return null;
+      const precoCusto = custo.vTotal/custo.qtd;
+      const precoVenda = venda.vTotal/venda.qtd;
+      return +((precoVenda - precoCusto)/precoVenda*100).toFixed(2);
+    }),
+    borderColor: COLORS[ci%COLORS.length],
+    backgroundColor: COLORS[ci%COLORS.length]+'22',
+    borderWidth:2, pointRadius:3, tension:.3, fill:false, spanGaps:true
+  }));
+
+  if(chartMargemMes) chartMargemMes.destroy();
+  chartMargemMes = new Chart(document.getElementById('chart-margem-mes'),{
+    type:'line', data:{labels:mesLabels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1)||'—'}%`}}},
+      scales:{x:{ticks:{color:tc,font:{size:10}},grid:{display:false}},
+              y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}
+  });
+  document.getElementById('legend-margem-mes').innerHTML=combs.map((c,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${COLORS[i%COLORS.length]}"></span>${c}</span>`).join('');
+
+  // ── Gráfico margem média por combustível (barras) ────────
+  const margemMedia = combs.map(comb=>{
+    const vals = meses.map(mes=>{
+      const custo = custoMes[mes]?.[comb];
+      const venda = vendaMes[mes]?.[comb];
+      if(!custo||!venda||!custo.qtd||!venda.qtd) return null;
+      return (venda.vTotal/venda.qtd - custo.vTotal/custo.qtd) / (venda.vTotal/venda.qtd) * 100;
+    }).filter(v=>v!==null);
+    return vals.length ? +(vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(2) : 0;
+  });
+
+  if(chartMargemComb) chartMargemComb.destroy();
+  chartMargemComb = new Chart(document.getElementById('chart-margem-comb'),{
+    type:'bar',
+    data:{labels:combs, datasets:[{data:margemMedia,backgroundColor:combs.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y.toFixed(1)}%`}}},
+      scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:30},grid:{display:false}},
+              y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}
+  });
+  document.getElementById('legend-margem-comb').innerHTML=combs.map((c,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${COLORS[i%COLORS.length]}"></span>${c} <strong>${margemMedia[i].toFixed(1)}%</strong></span>`).join('');
+
+  // ── Gráfico margem outros produtos por mês ───────────────
+  const margemOutrosMes = meses.map(mes=>{
+    let vTotalVenda=0, qtdTotal=0;
+    notas.filter(n=>!n.cancelada&&n.mes===mes).forEach(nota=>{
+      (nota.produtos||[]).filter(p=>p.nome&&!isComb(p.nome)).forEach(p=>{
+        vTotalVenda += (p.vProd||0)-(p.vDesc||0);
+        qtdTotal++;
+      });
+    });
+    // Para outros produtos sem custo de compra, mostra variação de desconto vs bruto
+    let vBruto=0;
+    notas.filter(n=>!n.cancelada&&n.mes===mes).forEach(nota=>{
+      (nota.produtos||[]).filter(p=>p.nome&&!isComb(p.nome)).forEach(p=>{ vBruto+=p.vProd||0; });
+    });
+    if(!vBruto) return 0;
+    return +((vTotalVenda/vBruto)*100).toFixed(2);
+  });
+
+  if(chartMargemOutros) chartMargemOutros.destroy();
+  chartMargemOutros = new Chart(document.getElementById('chart-margem-outros'),{
+    type:'bar',
+    data:{labels:mesLabels, datasets:[{data:margemOutrosMes,backgroundColor:'rgba(239,159,39,.75)',borderRadius:4,label:'% líquido/bruto'}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` Margem líq/bruto: ${ctx.parsed.y.toFixed(1)}%`}}},
+      scales:{x:{ticks:{color:tc,font:{size:10}},grid:{display:false}},
+              y:{min:0,max:105,ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}
+  });
+}
+
+function normalizaComb(nome){
+  const n = nome.toUpperCase();
+  if(n.includes('GASOLINA') && n.includes('COMUM')) return 'Gasolina Comum';
+  if(n.includes('GASOLINA') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADA'))) return 'Gasolina VPower';
+  if(n.includes('GASOLINA')) return 'Gasolina Comum';
+  if(n.includes('ETANOL') && (n.includes('VPOWER')||n.includes('V-POWER'))) return 'Etanol VPower';
+  if(n.includes('ETANOL')) return 'Etanol Comum';
+  if(n.includes('DIESEL') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO'))) return 'Diesel VPower';
+  if(n.includes('DIESEL')) return 'Diesel S10';
+  return nome;
+}
+
+
