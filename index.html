@@ -2612,9 +2612,8 @@ function normalizaComb(nome){
   if(n.includes('ETANOL') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO')||n.includes('ADITIVADA'))) return 'Etanol VPower';
   // Etanol Comum (compra: ETANOL HIDRATADO COMUM GRANEL, venda: ETANOL COMUM)
   if(n.includes('ETANOL')||n.includes('HIDRATADO')) return 'Etanol Comum';
-  // Diesel VPower / Aditivado (compra: Shell V-Power Diesel S-10 Aditivado)
-  if(n.includes('DIESEL') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO')||n.includes('ADITIVADA'))) return 'Diesel VPower';
-  // Diesel S10 comum
+  // Diesel — unifica todos em "Diesel S10" pois há apenas um tipo de compra (Shell V-Power Diesel S-10)
+  // Tanto "Shell V-Power Diesel S-10 Aditivado" (compra) quanto "DIESEL S10" (venda) → mesmo nome
   if(n.includes('DIESEL')) return 'Diesel S10';
   return nome;
 }
