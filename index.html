@@ -1385,6 +1385,9 @@ async function changeCategory(id,cat){
 }
 
 // ── Análise por categoria ─────────────────────────────────
+// Categorias excluídas da análise (CMV)
+const CAT_EXCLUIR = n => /combustiv|maquininha|cartão|cartoes/i.test(n||'');
+
 function renderAnaliseCat(){
   const mesSel=document.getElementById('filter-cat-mes');
   const unidSel=document.getElementById('filter-cat-unidade');
@@ -1412,22 +1415,34 @@ function renderAnaliseCat(){
   const txFilt=allTx.filter(t=>
     t.amount<0 &&
     (!mes||t.date&&t.date.startsWith(mes)) &&
-    (!unid||t.company===unid)
+    (!unid||t.company===unid) &&
+    !CAT_EXCLUIR(t.category)   // Fix 2: exclui combustíveis e produtos (CMV)
   );
 
   const byCat={};
   txFilt.forEach(t=>{ if(!byCat[t.category]) byCat[t.category]=0; byCat[t.category]+=Math.abs(t.amount); });
+
+  // Fix 3: total só das categorias exibidas (sem CMV)
   const totalDesp=Object.values(byCat).reduce((s,v)=>s+v,0);
   const cats=Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
 
+  // Fix 4: rodapé com soma total
+  const totalRow = totalDesp>0
+    ? `<tr style="border-top:2px solid var(--border2);font-weight:700">
+        <td style="padding-top:10px">Total de despesas</td>
+        <td style="text-align:right;padding-top:10px" class="amount-neg">${fmt(totalDesp)}</td>
+        <td></td>
+      </tr>` : '';
+
   document.getElementById('cat-tbody').innerHTML=cats.map(c=>{
     const pct=totalDesp>0?byCat[c]/totalDesp*100:0;
+    // Fix 1: passa mes e unid atuais (após repopular selects) para o drilldown
     return`<tr style="cursor:pointer" data-catname="${c}" data-catmes="${mes}" data-catunid="${unid}" class="cat-row">
       <td><span style="width:10px;height:10px;border-radius:50%;background:${catColor(c)};display:inline-block;margin-right:10px;vertical-align:middle"></span>${c}</td>
       <td style="text-align:right" class="amount-neg">${fmt(byCat[c])}</td>
       <td style="text-align:right">
         <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-          <div style="width:80px;height:5px;background:var(--color-background-tertiary,#eee);border-radius:3px;overflow:hidden">
+          <div style="width:80px;height:5px;background:var(--bg3,#eee);border-radius:3px;overflow:hidden">
             <div style="height:5px;width:${Math.min(pct,100).toFixed(1)}%;background:${catColor(c)};border-radius:3px"></div>
           </div>
           <span style="min-width:36px;text-align:right;font-weight:500">${pct.toFixed(1)}%</span>
@@ -1435,7 +1450,7 @@ function renderAnaliseCat(){
         </div>
       </td>
     </tr>`;
-  }).join('');
+  }).join('')+totalRow;
 }
 
 // ── Empresas ──────────────────────────────────────────────
@@ -1526,19 +1541,23 @@ let catDrillName='', catDrillMes='', catDrillUnid='', catDrillPage=0;
 const CAT_DRILL_PER=50;
 
 function openCatDrilldown(catName, mes, unid){
-  catDrillName=catName; catDrillMes=mes; catDrillUnid=unid; catDrillPage=0;
+  // Fix 1: usa exatamente o mês e unidade do painel principal
+  catDrillName=catName;
+  catDrillMes=document.getElementById('filter-cat-mes')?.value||mes;
+  catDrillUnid=document.getElementById('filter-cat-unidade')?.value||unid;
+  catDrillPage=0;
+
   const cc=catColor(catName);
   document.getElementById('cat-drill-dot').style.background=cc;
   document.getElementById('cat-drill-title').textContent=catName;
 
-  // Popula filtro de unidade no drilldown
+  // Sincroniza o filtro de unidade do drilldown com o do painel
   const unidSel=document.getElementById('cat-drill-unidade');
-  const curU=unidSel.value;
   unidSel.innerHTML='<option value="">Todas as unidades</option>';
   [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
     const o=document.createElement('option'); o.value=c; o.textContent=c; unidSel.appendChild(o);
   });
-  if(curU) unidSel.value=curU;
+  unidSel.value=catDrillUnid; // força o mesmo filtro do painel
 
   document.getElementById('cat-drill-search').value='';
   renderCatDrillTable();
