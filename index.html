@@ -505,20 +505,6 @@ tbody tr:hover td{background:var(--bg)}
             <button class="btn btn-sm" onclick="showCanceladas()" style="border-color:rgba(192,57,43,.4);color:var(--red)">Ver canceladas</button>
           </div>
 
-          <!-- Cards de margem geral -->
-          <div id="margem-cards-row" style="display:none;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:0" class="metrics-row">
-            <div class="metric" style="border-left:4px solid #1D9E75">
-              <div class="metric-label">Margem média — Combustíveis</div>
-              <div class="metric-val pos" id="card-margem-comb-val">—</div>
-              <div style="font-size:11px;color:var(--text3);margin-top:4px" id="card-margem-comb-sub">Importe NF-e de entrada para calcular</div>
-            </div>
-            <div class="metric" style="border-left:4px solid #EF9F27">
-              <div class="metric-label">Margem líquida — Outros produtos</div>
-              <div class="metric-val" style="color:#BA7517" id="card-margem-outros-val">—</div>
-              <div style="font-size:11px;color:var(--text3);margin-top:4px" id="card-margem-outros-sub">% líquido sobre bruto (sem custo de compra)</div>
-            </div>
-          </div>
-
           <!-- Mix + Margem média -->
           <div class="charts-grid">
             <div class="chart-card"><div class="chart-title">Mix de combustíveis (volume em litros)</div><div class="legend-row" id="legend-vendas-mix"></div><div class="chart-wrap" style="height:200px"><canvas id="chart-vendas-mix"></canvas></div></div>
@@ -530,12 +516,6 @@ tbody tr:hover td{background:var(--bg)}
             <div class="chart-title">Histórico de margem por combustível — por mês</div>
             <div class="legend-row" id="legend-margem-mes"></div>
             <div class="chart-wrap" style="height:220px"><canvas id="chart-margem-mes"></canvas></div>
-          </div>
-
-          <!-- Margem outros produtos por mês -->
-          <div class="chart-card chart-card-full">
-            <div class="chart-title">Margem média mensal — outros produtos (não combustíveis)</div>
-            <div class="chart-wrap" style="height:180px"><canvas id="chart-margem-outros"></canvas></div>
           </div>
 
           <!-- Botão importar entradas -->
@@ -2210,7 +2190,8 @@ function renderVendas(){
     <div class="metric"><div class="metric-label">Faturamento líquido total</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas</div></div>
     <div class="metric"><div class="metric-label">Combustíveis</div><div class="metric-val pos">${fmt(totCombLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totCombLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
     <div class="metric"><div class="metric-label">Outros produtos</div><div class="metric-val pos">${fmt(totOutrosLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totOutrosLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
-    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>`;
+    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>
+    <div class="metric" style="border-left:3px solid #1D9E75"><div class="metric-label">Margem média — Combustíveis</div><div class="metric-val pos" id="card-margem-comb-val">—</div><div style="font-size:11px;color:var(--text3);margin-top:4px" id="card-margem-comb-sub">Importe NF-e de entrada para calcular</div></div>`;
 
   // ── Alert cancelamentos ───────────────────────────────
   const alertEl = document.getElementById('vendas-cancel-alert');
@@ -2309,6 +2290,14 @@ async function clearVendasXml(){
   vendasData = [];
   renderVendas();
   toast('Dados de vendas apagados','success');
+}
+
+function showCanceladas(){
+  const el = document.getElementById('vendas-cancel-table');
+  if(!el) return;
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+  if(!visible) setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
 }
 
 // ── Tabs ──────────────────────────────────────────────────
@@ -2579,8 +2568,7 @@ function renderMargens(){
     : null;
 
   // Atualiza cards
-  const row = document.getElementById('margem-cards-row');
-  if(row) row.style.display='grid';
+  // margem-cards-row removido
 
   const cardCombVal = document.getElementById('card-margem-comb-val');
   const cardCombSub = document.getElementById('card-margem-comb-sub');
@@ -2591,14 +2579,7 @@ function renderMargens(){
       : 'Sem dados suficientes de compra';
   }
 
-  const cardOutrosVal = document.getElementById('card-margem-outros-val');
-  const cardOutrosSub = document.getElementById('card-margem-outros-sub');
-  if(cardOutrosVal){
-    cardOutrosVal.textContent = margemOutrosGeral!==null ? margemOutrosGeral+'%' : '—';
-    if(cardOutrosSub) cardOutrosSub.textContent = margemOutrosGeral!==null
-      ? `Sobre R$ ${fmt(vBrutoOutros)} em vendas brutas de outros produtos`
-      : 'Sem dados de outros produtos';
-  }
+  // card outros produtos removido
 
   // ── Gráfico margem outros produtos por mês ───────────────
   const margemOutrosMes = meses.map(mes=>{
@@ -2618,15 +2599,7 @@ function renderMargens(){
     return +((vTotalVenda/vBruto)*100).toFixed(2);
   });
 
-  if(chartMargemOutros) chartMargemOutros.destroy();
-  chartMargemOutros = new Chart(document.getElementById('chart-margem-outros'),{
-    type:'bar',
-    data:{labels:mesLabels, datasets:[{data:margemOutrosMes,backgroundColor:'rgba(239,159,39,.75)',borderRadius:4,label:'% líquido/bruto'}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` Margem líq/bruto: ${ctx.parsed.y.toFixed(1)}%`}}},
-      scales:{x:{ticks:{color:tc,font:{size:10}},grid:{display:false}},
-              y:{min:0,max:105,ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}
-  });
+  // gráfico outros produtos removido
 }
 
 function normalizaComb(nome){
