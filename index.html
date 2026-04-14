@@ -2171,7 +2171,7 @@ function renderVendas(){
   const isCombustivel = n => {
     const u = n.toUpperCase();
     if(/aditivo|lubrif|arla|fluido|filtro/i.test(u)) return false;
-    return /gasolina|etanol|diesel/i.test(u);
+    return /gasolina|etanol|diesel|hidratado/i.test(u);
   };
   const prodMap = {};
   validas.forEach(nota=>{
@@ -2398,8 +2398,7 @@ function parseXmlCompra(xmlStr){
     if(!infNFe) return null;
     const mod = getTagNS(infNFe,'mod');
     if(mod!=='55') return null; // só NF-e modelo 55
-    const tpNF = getTagNS(infNFe,'tpNF');
-    if(tpNF!=='0') return null; // só entradas (0=entrada, 1=saída)
+    // tpNF não é filtrado — o fornecedor emite como saída (1) mas é entrada para o posto
 
     const nNF   = getTagNS(infNFe,'nNF');
     const serie = getTagNS(infNFe,'serie');
@@ -2455,7 +2454,7 @@ function renderMargens(){
   const isComb = n => {
     const u = n.toUpperCase();
     if(/aditivo|lubrif|arla|fluido|filtro/i.test(u)) return false;
-    return /gasolina|etanol|diesel/i.test(u);
+    return /gasolina|etanol|diesel|hidratado/i.test(u);
   };
 
   // Custo por mês por combustível (das compras)
@@ -2576,13 +2575,18 @@ function renderMargens(){
 }
 
 function normalizaComb(nome){
-  const n = nome.toUpperCase();
-  if(n.includes('GASOLINA') && n.includes('COMUM')) return 'Gasolina Comum';
-  if(n.includes('GASOLINA') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADA'))) return 'Gasolina VPower';
+  const n = nome.toUpperCase().replace(/'/g,'').trim();
+  // Gasolina VPower / Aditivada (compra: SHELL V-POWER GASOLINA ADITIVADA)
+  if(n.includes('GASOLINA') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADA')||n.includes('ADITIVADO'))) return 'Gasolina VPower';
+  // Gasolina Comum (compra: GASOLINA TIPO C GRANEL, venda: GASOLINA COMUM)
   if(n.includes('GASOLINA')) return 'Gasolina Comum';
-  if(n.includes('ETANOL') && (n.includes('VPOWER')||n.includes('V-POWER'))) return 'Etanol VPower';
-  if(n.includes('ETANOL')) return 'Etanol Comum';
-  if(n.includes('DIESEL') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO'))) return 'Diesel VPower';
+  // Etanol VPower / Aditivado (compra: SHELL V-POWER ETANOL ADITIVADO)
+  if(n.includes('ETANOL') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO')||n.includes('ADITIVADA'))) return 'Etanol VPower';
+  // Etanol Comum (compra: ETANOL HIDRATADO COMUM GRANEL, venda: ETANOL COMUM)
+  if(n.includes('ETANOL')||n.includes('HIDRATADO')) return 'Etanol Comum';
+  // Diesel VPower / Aditivado (compra: Shell V-Power Diesel S-10 Aditivado)
+  if(n.includes('DIESEL') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO')||n.includes('ADITIVADA'))) return 'Diesel VPower';
+  // Diesel S10 comum
   if(n.includes('DIESEL')) return 'Diesel S10';
   return nome;
 }
