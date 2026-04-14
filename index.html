@@ -810,7 +810,48 @@ tbody tr:hover td{background:var(--bg)}
   </div>
 </div>
 
+
+
+<!-- MODAL nova regra por faixa de valor -->
+<div class="modal-overlay hidden" id="modal-range-rule">
+  <div class="modal">
+    <h2>Nova regra por faixa de valor</h2>
+    <p style="font-size:12px;color:var(--text2)">Use para remetentes ambíguos como "Receita Federal" onde o mesmo pagador pode representar impostos diferentes dependendo do valor.</p>
+    <div class="field"><label>Remetente (como aparece no extrato)</label><input id="rr-remetente" placeholder="ex: RECEITA FEDERAL, GPS, BANCO X"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label>Valor mínimo (R$) — deixe em branco para "sem mínimo"</label><input id="rr-min" type="number" step="0.01" min="0" placeholder="ex: 15000"></div>
+      <div class="field"><label>Valor máximo (R$) — deixe em branco para "sem máximo"</label><input id="rr-max" type="number" step="0.01" min="0" placeholder="ex: 300"></div>
+    </div>
+    <div class="field"><label>Categoria para esta faixa</label>
+      <select id="rr-cat"></select>
+    </div>
+    <div id="rr-preview" style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--text2)">Preencha os campos acima para ver o resumo da regra.</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeRangeRuleModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmSaveRangeRule()">Salvar regra</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL exceção de remetente -->
+<div class="modal-overlay hidden" id="modal-ignored">
+  <div class="modal">
+    <h2 id="modal-ignored-title">Adicionar exceção de remetente</h2>
+    <input type="hidden" id="ignored-editing" value="">
+    <p style="font-size:12px;color:var(--text2);line-height:1.6">Remetentes na lista de exceções <strong>nunca têm regra automática salva</strong>. Você classifica cada lançamento manualmente, sem que o sistema propague para outros lançamentos do mesmo remetente.<br><br>Ideal para: Receita Federal, GPS, DARF e outros pagadores ambíguos.</p>
+    <div class="field">
+      <label>Remetente (como aparece no extrato)</label>
+      <input id="ignored-input" list="ignored-datalist" placeholder="Digite ou selecione um remetente..." autocomplete="off">
+      <datalist id="ignored-datalist"></datalist>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeIgnoredModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmAddIgnored()">Salvar</button>
+    </div>
+  </div>
+</div>
 <script>
+
 // ── Supabase ──────────────────────────────────────────────
 const SUPABASE_URL = 'https://trtebwwzfnnjltbdhpay.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRydGVid3d6Zm5uamx0YmRocGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTQzNTQsImV4cCI6MjA5MDEzMDM1NH0.eOhEEiT7HUvnukX2Vd-YnL9YJ_038z2lwz3nNHw2ej8';
@@ -2318,48 +2359,7 @@ document.addEventListener('click', function(e){
     deleteRule(window._learnedList[remIdx].remetente);
   }
 });
-</script>
 
-<!-- MODAL nova regra por faixa de valor -->
-<div class="modal-overlay hidden" id="modal-range-rule">
-  <div class="modal">
-    <h2>Nova regra por faixa de valor</h2>
-    <p style="font-size:12px;color:var(--text2)">Use para remetentes ambíguos como "Receita Federal" onde o mesmo pagador pode representar impostos diferentes dependendo do valor.</p>
-    <div class="field"><label>Remetente (como aparece no extrato)</label><input id="rr-remetente" placeholder="ex: RECEITA FEDERAL, GPS, BANCO X"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="field"><label>Valor mínimo (R$) — deixe em branco para "sem mínimo"</label><input id="rr-min" type="number" step="0.01" min="0" placeholder="ex: 15000"></div>
-      <div class="field"><label>Valor máximo (R$) — deixe em branco para "sem máximo"</label><input id="rr-max" type="number" step="0.01" min="0" placeholder="ex: 300"></div>
-    </div>
-    <div class="field"><label>Categoria para esta faixa</label>
-      <select id="rr-cat"></select>
-    </div>
-    <div id="rr-preview" style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--text2)">Preencha os campos acima para ver o resumo da regra.</div>
-    <div class="modal-actions">
-      <button class="btn" onclick="closeRangeRuleModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmSaveRangeRule()">Salvar regra</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL exceção de remetente -->
-<div class="modal-overlay hidden" id="modal-ignored">
-  <div class="modal">
-    <h2 id="modal-ignored-title">Adicionar exceção de remetente</h2>
-    <input type="hidden" id="ignored-editing" value="">
-    <p style="font-size:12px;color:var(--text2);line-height:1.6">Remetentes na lista de exceções <strong>nunca têm regra automática salva</strong>. Você classifica cada lançamento manualmente, sem que o sistema propague para outros lançamentos do mesmo remetente.<br><br>Ideal para: Receita Federal, GPS, DARF e outros pagadores ambíguos.</p>
-    <div class="field">
-      <label>Remetente (como aparece no extrato)</label>
-      <input id="ignored-input" list="ignored-datalist" placeholder="Digite ou selecione um remetente..." autocomplete="off">
-      <datalist id="ignored-datalist"></datalist>
-    </div>
-    <div class="modal-actions">
-      <button class="btn" onclick="closeIgnoredModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmAddIgnored()">Salvar</button>
-    </div>
-  </div>
-</div>
-</body>
-</html>
 // ── Compras XML (NF-e entrada) ────────────────────────────
 async function handleComprasZip(file){
   if(!file) return;
@@ -2598,5 +2598,6 @@ function normalizaComb(nome){
   if(n.includes('DIESEL')) return 'Diesel S10';
   return nome;
 }
-
-
+</script>
+</body>
+</html>
