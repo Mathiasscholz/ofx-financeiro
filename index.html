@@ -130,8 +130,8 @@ tbody tr:hover td{background:var(--bg)}
 .dd-metric .label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;font-weight:500}
 .dd-metric .val{font-size:15px;font-weight:600}
 /* Categorias */
-.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
-.cat-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:12px;justify-content:space-between;box-shadow:var(--shadow)}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.cat-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;display:flex;align-items:flex-start;gap:10px;justify-content:space-between;box-shadow:var(--shadow);flex-wrap:wrap}
 .cat-left{display:flex;align-items:center;gap:12px}
 .cat-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
 .cat-info .name{font-size:13px;font-weight:500}
@@ -1161,8 +1161,8 @@ function closeCatModal(){ document.getElementById('modal-cat').classList.add('hi
 function renderCatGrid(){
   document.getElementById('cat-grid').innerHTML=allCats().map(c=>`
     <div class="cat-item">
-      <div class="cat-left"><div class="cat-dot" style="background:${c.color}"></div><div class="cat-info"><div class="name">${c.name}</div><div class="sub">${c.type==='credit'?'Receitas':c.type==='debit'?'Despesas':'Rec. e Desp.'}${c.keywords&&c.keywords.length?' · '+c.keywords.slice(0,2).join(', ')+(c.keywords.length>2?'…':''):''}</div></div></div>
-      <div style="display:flex;gap:4px;flex-shrink:0">${c.isDefault?`<span class="badge badge-gray">padrão</span>`:`<button class="btn btn-sm" onclick="editCat('${c.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteCat('${c.id}')">✕</button>`}</div>
+      <div class="cat-left" style="flex:1;min-width:0"><div class="cat-dot" style="background:${c.color};flex-shrink:0"></div><div class="cat-info" style="min-width:0"><div class="name" style="white-space:normal;word-break:break-word">${c.name}</div><div class="sub">${c.type==='credit'?'Receitas':c.type==='debit'?'Despesas':'Rec. e Desp.'}${c.keywords&&c.keywords.length?' · '+c.keywords.slice(0,2).join(', ')+(c.keywords.length>2?'…':''):''}</div></div></div>
+      <div style="display:flex;gap:4px;flex-shrink:0;align-items:center">${c.isDefault?`<span class="badge badge-gray">padrão</span>`:`<button class="btn btn-sm" onclick="editCat('${c.id}')">Editar</button><button class="btn btn-sm btn-danger" onclick="deleteCat('${c.id}')">✕</button>`}</div>
     </div>`).join('');
 }
 
@@ -1386,7 +1386,7 @@ async function changeCategory(id,cat){
 
 // ── Análise por categoria ─────────────────────────────────
 // Categorias excluídas da análise (CMV)
-const CAT_EXCLUIR = n => /combustiv|maquininha|cartão|cartoes/i.test(n||'');
+const CAT_EXCLUIR = n => /combustiv|maquininha|cartão|cartoes|^produtos?$/i.test(n||'');
 
 function renderAnaliseCat(){
   const mesSel=document.getElementById('filter-cat-mes');
@@ -1416,11 +1416,16 @@ function renderAnaliseCat(){
     t.amount<0 &&
     (!mes||t.date&&t.date.startsWith(mes)) &&
     (!unid||t.company===unid) &&
-    !CAT_EXCLUIR(t.category)   // Fix 2: exclui combustíveis e produtos (CMV)
+    !CAT_EXCLUIR(t.category)
   );
 
   const byCat={};
-  txFilt.forEach(t=>{ if(!byCat[t.category]) byCat[t.category]=0; byCat[t.category]+=Math.abs(t.amount); });
+  txFilt.forEach(t=>{
+    // Usa 'Sem categoria' para transações sem categoria definida
+    const cat = t.category||'Sem categoria';
+    if(!byCat[cat]) byCat[cat]=0;
+    byCat[cat]+=Math.abs(t.amount);
+  });
 
   // Fix 3: total só das categorias exibidas (sem CMV)
   const totalDesp=Object.values(byCat).reduce((s,v)=>s+v,0);
