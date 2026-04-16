@@ -114,6 +114,7 @@ tbody tr:hover td{background:var(--bg)}
 .badge-green{background:var(--green-bg);color:var(--green)}
 .badge-gray{background:var(--bg3);color:var(--text2)}
 /* Remetentes */
+.rem-cal-cell:hover{filter:brightness(.97)}
 .rem-bar-wrap{display:flex;align-items:center;gap:8px}
 .rem-bar{height:5px;background:var(--bg3);border-radius:3px;flex:1}
 .rem-fill{height:5px;border-radius:3px}
@@ -323,49 +324,76 @@ tbody tr:hover td{background:var(--bg)}
 
     <!-- REMETENTES -->
     <div id="tab-remetentes" class="hidden">
-      <div class="topbar"><div class="topbar-title">Por remetente</div></div>
+      <div class="topbar">
+        <div><div class="topbar-title">Por remetente</div></div>
+        <div class="topbar-right" id="rem-cal-summary" style="gap:16px;font-size:13px"></div>
+      </div>
       <div class="content">
-        <div id="no-data-rem" class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><h3>Sem dados</h3><p>Importe arquivos OFX para ver análise por remetente</p></div>
+        <div id="no-data-rem" class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <h3>Sem dados</h3><p>Importe arquivos OFX para ver análise por remetente</p>
+        </div>
         <div id="rem-content" class="hidden">
-          <div class="table-section">
-            <div class="table-header">
-              <h3>Remetentes</h3>
-              <div class="filters" style="flex-wrap:wrap;gap:8px">
-                <select id="rem-tipo" onchange="renderRemetentes()"><option value="credit">Entradas</option><option value="debit">Saídas</option></select>
-                <select id="rem-mes" onchange="renderRemetentes()"><option value="">Todos os meses</option></select>
-                <select id="rem-dia" onchange="renderRemetentes()" style="min-width:120px"><option value="">Todos os dias</option></select>
-                <select id="rem-empresa" onchange="renderRemetentes()"><option value="">Todas as empresas</option></select>
-                <div style="position:relative;display:inline-block">
-                  <button class="btn" id="rem-filter-btn" onclick="toggleRemFilter(event)" style="display:flex;align-items:center;gap:6px;font-size:12px">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                    <span id="rem-filter-label">Filtrar remetentes</span>
-                  </button>
-                  <div id="rem-filter-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:50;min-width:280px;max-height:300px;overflow:hidden;display:flex;flex-direction:column">
-                    <div style="padding:8px;border-bottom:1px solid var(--border2)">
-                      <input id="rem-filter-search" placeholder="Buscar remetente..." style="width:100%;font-size:12px;padding:6px 8px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text)" oninput="filterRemDropdown()">
-                    </div>
-                    <div style="overflow-y:auto;flex:1" id="rem-filter-list"></div>
-                    <div style="padding:8px;border-top:1px solid var(--border2);display:flex;gap:6px">
-                      <button class="btn btn-sm" onclick="clearRemFilter()" style="flex:1">Limpar</button>
-                      <button class="btn btn-sm btn-primary" onclick="applyRemFilter()" style="flex:1">Aplicar</button>
-                    </div>
+
+          <!-- Filtros -->
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn" onclick="remCalPrev()" style="padding:6px 10px">‹</button>
+              <div id="rem-cal-mes-label" style="font-size:16px;font-weight:700;min-width:140px;text-align:center"></div>
+              <button class="btn" onclick="remCalNext()" style="padding:6px 10px">›</button>
+            </div>
+            <div class="filters" style="flex-wrap:wrap;gap:8px">
+              <select id="rem-tipo" onchange="renderRemetentes()"><option value="credit">Entradas</option><option value="debit">Saídas</option></select>
+              <select id="rem-empresa" onchange="renderRemetentes()"><option value="">Todas as empresas</option></select>
+              <div style="position:relative;display:inline-block">
+                <button class="btn" id="rem-filter-btn" onclick="toggleRemFilter(event)" style="display:flex;align-items:center;gap:6px;font-size:12px">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  <span id="rem-filter-label">Filtrar remetentes</span>
+                </button>
+                <div id="rem-filter-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:50;min-width:280px;max-height:340px;overflow:hidden;flex-direction:column">
+                  <div style="padding:8px;border-bottom:1px solid var(--border2)">
+                    <input id="rem-filter-search" placeholder="Buscar remetente..." style="width:100%;font-size:12px;padding:6px 8px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text)" oninput="filterRemDropdown()">
+                  </div>
+                  <div style="overflow-y:auto;flex:1;max-height:220px" id="rem-filter-list"></div>
+                  <div style="padding:8px;border-top:1px solid var(--border2);display:flex;gap:6px">
+                    <button class="btn btn-sm" onclick="clearRemFilter()" style="flex:1">Limpar</button>
+                    <button class="btn btn-sm btn-primary" onclick="applyRemFilter()" style="flex:1">Aplicar</button>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- Calendário -->
+          <div id="rem-calendar" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)">
+            <!-- Cabeçalho dias semana -->
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);background:var(--bg3);border-bottom:1px solid var(--border2)">
+              ${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=>`<div style="padding:8px;text-align:center;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.5px">${d}</div>`).join('')}
+            </div>
+            <div id="rem-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr)"></div>
+          </div>
+
+          <!-- Drilldown dia -->
+          <div id="rem-day-drill" class="hidden" style="margin-top:16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)">
+            <div style="padding:14px 18px;border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:15px;font-weight:700" id="rem-day-title"></div>
+                <div style="font-size:12px;color:var(--text2);margin-top:2px" id="rem-day-sub"></div>
+              </div>
+              <button class="btn btn-sm" onclick="closeRemDayDrill()">✕ Fechar</button>
+            </div>
             <div class="table-wrap">
-              <table><thead><tr><th>Remetente</th><th style="text-align:right">Transações</th><th style="text-align:right">Total</th><th style="text-align:right">Ticket médio</th><th style="min-width:140px">Proporção</th></tr></thead>
-              <tbody id="rem-tbody"></tbody></table>
+              <table><thead><tr>
+                <th>Remetente</th>
+                <th style="text-align:right">Transações</th>
+                <th style="text-align:right">Total</th>
+                <th style="text-align:right">Ticket médio</th>
+                <th style="min-width:120px">Proporção</th>
+              </tr></thead>
+              <tbody id="rem-day-tbody"></tbody></table>
             </div>
           </div>
-          <div id="drilldown-panel" class="drilldown-panel hidden">
-            <div class="drilldown-header"><div><h3 id="dd-title"></h3><div class="sub" id="dd-sub"></div></div><button class="btn btn-sm" onclick="closeDrilldown()">✕ Fechar</button></div>
-            <div class="drilldown-body">
-              <div class="drilldown-metrics" id="dd-metrics"></div>
-              <div><div class="chart-title" style="margin-bottom:10px">Total por dia</div><div class="chart-wrap" style="height:200px"><canvas id="chart-dd"></canvas></div></div>
-              <div class="table-wrap"><table><thead><tr><th>Data</th><th style="text-align:right">Transações</th><th style="text-align:right">Total</th><th style="text-align:right">Ticket médio</th></tr></thead><tbody id="dd-tbody"></tbody></table></div>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>
@@ -1276,93 +1304,177 @@ function populateRemFiltros(){
   [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; emp.appendChild(o); });
   if(cure) emp.value=cure;
 }
-// Remetentes selecionados no filtro multi-select
+// ── Calendário de remetentes ─────────────────────────────
 let remFiltroSelecionados = new Set();
+let remCalDate = new Date(); // mês exibido no calendário
+
+function remCalPrev(){
+  remCalDate = new Date(remCalDate.getFullYear(), remCalDate.getMonth()-1, 1);
+  renderRemetentes();
+}
+function remCalNext(){
+  remCalDate = new Date(remCalDate.getFullYear(), remCalDate.getMonth()+1, 1);
+  renderRemetentes();
+}
 
 function renderRemetentes(){
-  closeDrilldown();
-  const tipo=document.getElementById('rem-tipo').value;
-  const mes=document.getElementById('rem-mes').value;
-  const emp=document.getElementById('rem-empresa').value;
+  const tipo = document.getElementById('rem-tipo').value;
+  const emp  = document.getElementById('rem-empresa').value;
+  const today = new Date();
 
-  // Popula selects de mês e empresa
-  const mesSel=document.getElementById('rem-mes');
-  const curMes=mesSel.value;
-  mesSel.innerHTML='<option value="">Todos os meses</option>';
-  [...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort().forEach(m=>{
-    const[y,mo]=m.split('-'); const o=document.createElement('option'); o.value=m;
-    o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
-    mesSel.appendChild(o);
-  });
-  if(curMes) mesSel.value=curMes;
-
-  const empSel=document.getElementById('rem-empresa');
-  const curEmp=empSel.value;
-  empSel.innerHTML='<option value="">Todas as empresas</option>';
+  // Popula select de empresa
+  const empSel = document.getElementById('rem-empresa');
+  const curEmp = empSel.value;
+  empSel.innerHTML = '<option value="">Todas as empresas</option>';
   [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
     const o=document.createElement('option'); o.value=c; o.textContent=c; empSel.appendChild(o);
   });
   if(curEmp) empSel.value=curEmp;
 
-  // Popula select de dia baseado no mês selecionado
-  const diaSel=document.getElementById('rem-dia');
-  const curDia=diaSel?diaSel.value:'';
-  if(diaSel){
-    const diasDisponiveis=[...new Set(
-      allTx.filter(t=>t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp))
-           .map(t=>t.date?t.date.slice(8,10):'').filter(Boolean)
-    )].sort();
-    diaSel.innerHTML='<option value="">Todos os dias</option>';
-    diasDisponiveis.forEach(d=>{
-      const o=document.createElement('option'); o.value=d;
-      o.textContent=`Dia ${parseInt(d)}`;
-      diaSel.appendChild(o);
-    });
-    if(curDia) diaSel.value=curDia;
+  // Define mês do calendário — usa primeiro mês com dados se ainda não definido
+  if(!remCalDate || isNaN(remCalDate)){
+    const meses=[...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort();
+    if(meses.length){ const[y,m]=meses[meses.length-1].split('-'); remCalDate=new Date(+y,+m-1,1); }
+    else remCalDate=new Date();
   }
-  const dia=diaSel?diaSel.value:'';
 
-  const tx=allTx.filter(t=>
+  const ano = remCalDate.getFullYear();
+  const mes = remCalDate.getMonth(); // 0-indexed
+  const mesStr = `${ano}-${String(mes+1).padStart(2,'0')}`;
+  const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  document.getElementById('rem-cal-mes-label').textContent = `${MESES_PT[mes]} de ${ano}`;
+
+  // Filtra transações do mês
+  const txMes = allTx.filter(t=>
     t.type===tipo &&
-    (!mes||t.date&&t.date.startsWith(mes)) &&
-    (!emp||t.company===emp) &&
-    (!dia||t.date&&t.date.slice(8,10)===dia)
+    t.date && t.date.startsWith(mesStr) &&
+    (!emp || t.company===emp) &&
+    (remFiltroSelecionados.size===0 || remFiltroSelecionados.has(t.remetente))
   );
-  const byRem={};
-  tx.forEach(t=>{ const r=t.remetente||'Outros'; if(!byRem[r]) byRem[r]={count:0,total:0}; byRem[r].count++; byRem[r].total+=Math.abs(t.amount); });
 
-  let rows=Object.entries(byRem).map(([name,d])=>({name,count:d.count,total:d.total,avg:d.total/d.count}));
-  rows.sort((a,b)=>remSort.dir*(a[remSort.col]>b[remSort.col]?1:-1));
+  // Agrega por dia
+  const porDia = {};
+  txMes.forEach(t=>{
+    const d = t.date;
+    if(!d) return;
+    if(!porDia[d]) porDia[d] = {total:0, count:0, txs:[]};
+    porDia[d].total += Math.abs(t.amount);
+    porDia[d].count++;
+    porDia[d].txs.push(t);
+  });
 
-  // Aplica filtro de remetentes selecionados
-  if(remFiltroSelecionados.size>0){
-    rows=rows.filter(r=>remFiltroSelecionados.has(r.name));
+  const totalMes    = Object.values(porDia).reduce((s,v)=>s+v.total,0);
+  const totalFuturo = Object.entries(porDia)
+    .filter(([d])=>new Date(d+'T12:00:00') > today)
+    .reduce((s,[,v])=>s+v.total,0);
+
+  // Summary na topbar
+  const summaryEl = document.getElementById('rem-cal-summary');
+  if(summaryEl) summaryEl.innerHTML=`
+    <span style="color:var(--green);font-weight:600">${tipo==='credit'?'Recebido':'Pago'} <strong>${fmt(totalMes-totalFuturo)}</strong></span>
+    ${totalFuturo>0?`<span style="color:#BA7517;font-weight:600">Previsto <strong>${fmt(totalFuturo)}</strong></span>`:''}`;
+
+  // Atualiza label filtro
+  const label = document.getElementById('rem-filter-label');
+  if(label) label.textContent = remFiltroSelecionados.size>0 ? `${remFiltroSelecionados.size} selecionado(s)` : 'Filtrar remetentes';
+
+  // Monta calendário
+  const primeiroDia = new Date(ano, mes, 1).getDay(); // 0=dom
+  const ultimoDia   = new Date(ano, mes+1, 0).getDate();
+  const maxTotal    = Math.max(...Object.values(porDia).map(d=>d.total), 1);
+  const isCredit    = tipo==='credit';
+  const cor         = isCredit ? 'var(--green)' : 'var(--red)';
+  const corBg       = isCredit ? 'rgba(29,158,117,.08)' : 'rgba(224,74,74,.08)';
+  const corBorder   = isCredit ? '#1D9E75' : 'var(--red)';
+
+  let cells = '';
+  // Células vazias antes do dia 1
+  for(let i=0;i<primeiroDia;i++) cells += `<div style="min-height:90px;border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);background:var(--bg3)"></div>`;
+
+  for(let d=1; d<=ultimoDia; d++){
+    const dateStr = `${mesStr}-${String(d).padStart(2,'0')}`;
+    const isToday = dateStr === today.toISOString().slice(0,10);
+    const isFuture = new Date(dateStr+'T12:00:00') > today;
+    const dayData = porDia[dateStr];
+    const intensity = dayData ? Math.round(dayData.total/maxTotal*100) : 0;
+    const col = (primeiroDia+d-1) % 7; // coluna 0=dom,6=sáb
+    const isSun = col===0;
+    const isSat = col===6;
+
+    cells += `<div class="rem-cal-cell" data-date="${dateStr}" style="
+      min-height:90px;
+      border-right:1px solid var(--border2);
+      border-bottom:1px solid var(--border2);
+      padding:8px;
+      cursor:${dayData?'pointer':'default'};
+      background:${isToday?`${corBg}`:(isSun||isSat)?'var(--bg3)':'var(--bg2)'};
+      transition:background .15s;
+      position:relative;
+      ${isToday?`outline:2px solid ${corBorder};outline-offset:-2px;border-radius:2px;`:''}
+    ">
+      <div style="font-size:13px;font-weight:${isToday?'700':'500'};color:${isToday?corBorder:(isSun||isSat)?'var(--text3)':'var(--text)'};">${d}</div>
+      ${dayData?`
+        <div style="margin-top:6px">
+          <div style="font-size:12px;font-weight:700;color:${cor}">${fmt(dayData.total)}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">${dayData.count} transação${dayData.count>1?'ões':''} <span style="color:${isFuture?'#BA7517':cor}">●</span></div>
+          <div style="margin-top:6px;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden">
+            <div style="height:3px;width:${intensity}%;background:${cor};border-radius:2px"></div>
+          </div>
+        </div>`:''}
+    </div>`;
   }
 
-  const maxTotal=Math.max(...rows.map(r=>r.total),1);
-  const totalGeral=rows.reduce((s,r)=>s+r.total,0);
+  // Completa última linha
+  const totalCells = primeiroDia + ultimoDia;
+  const remaining = (7 - (totalCells % 7)) % 7;
+  for(let i=0;i<remaining;i++) cells += `<div style="min-height:90px;border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);background:var(--bg3)"></div>`;
 
-  // Linha de total no rodapé
-  const totalRow=rows.length>0?`
-    <tr style="border-top:2px solid var(--border2);font-weight:700;background:var(--bg2)">
-      <td style="padding-top:10px">Total (${rows.length} remetentes)</td>
-      <td style="text-align:right;padding-top:10px;color:var(--text2)">${rows.reduce((s,r)=>s+r.count,0)}</td>
-      <td style="text-align:right;padding-top:10px" class="${tipo==='credit'?'amount-pos':'amount-neg'}">${fmt(totalGeral)}</td>
-      <td colspan="2"></td>
-    </tr>`:'';
+  document.getElementById('rem-cal-grid').innerHTML = cells;
 
-  // Atualiza label do botão de filtro
-  const label=document.getElementById('rem-filter-label');
-  if(label) label.textContent=remFiltroSelecionados.size>0?`${remFiltroSelecionados.size} selecionado(s)`:'Filtrar remetentes';
+  // Fecha drilldown se aberto
+  document.getElementById('rem-day-drill').classList.add('hidden');
+}
 
-  document.getElementById('rem-tbody').innerHTML=rows.slice(0,200).map((r,i)=>`
-    <tr class="rem-row" data-remname="${r.name.replace(/"/g,'&quot;')}" data-tipo="${tipo}" data-mes="${mes}" data-dia="${dia}" data-emp="${emp}" style="cursor:pointer">
-      <td style="font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color(i)};margin-right:10px;vertical-align:middle"></span>${r.name}</td>
-      <td style="text-align:right;color:var(--text2)">${r.count}</td>
-      <td style="text-align:right" class="${tipo==='credit'?'amount-pos':'amount-neg'}">${fmt(r.total)}</td>
-      <td style="text-align:right;color:var(--text2)">${fmt(r.avg)}</td>
-      <td><div class="rem-bar-wrap"><div class="rem-bar"><div class="rem-fill" style="width:${Math.round(r.total/maxTotal*100)}%;background:${tipo==='credit'?'var(--green)':'var(--red)'}"></div></div><span style="font-size:11px;color:var(--text3);min-width:32px;text-align:right">${Math.round(r.total/totalGeral*100)}%</span></div></td>
-    </tr>`).join('')+totalRow;
+function openRemDayDrill(dateStr){
+  const tipo = document.getElementById('rem-tipo').value;
+  const emp  = document.getElementById('rem-empresa').value;
+  const tx = allTx.filter(t=>
+    t.type===tipo && t.date===dateStr &&
+    (!emp||t.company===emp) &&
+    (remFiltroSelecionados.size===0||remFiltroSelecionados.has(t.remetente))
+  );
+  if(!tx.length) return;
+
+  const [y,m,d] = dateStr.split('-');
+  const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  document.getElementById('rem-day-title').textContent = `${parseInt(d)} de ${MESES_PT[+m-1]} de ${y}`;
+  document.getElementById('rem-day-sub').textContent = `${tx.length} transação${tx.length>1?'ões':''} · Total: ${fmt(tx.reduce((s,t)=>s+Math.abs(t.amount),0))}`;
+
+  const byRem = {};
+  tx.forEach(t=>{ const r=t.remetente||'Outros'; if(!byRem[r]) byRem[r]={count:0,total:0}; byRem[r].count++; byRem[r].total+=Math.abs(t.amount); });
+  const rows = Object.entries(byRem).map(([name,d])=>({name,count:d.count,total:d.total,avg:d.total/d.count})).sort((a,b)=>b.total-a.total);
+  const totalDia = rows.reduce((s,r)=>s+r.total,0);
+  const maxTotal = Math.max(...rows.map(r=>r.total),1);
+  const isCredit = tipo==='credit';
+
+  document.getElementById('rem-day-tbody').innerHTML = rows.map((r,i)=>`<tr>
+    <td style="font-weight:500;font-size:12px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color(i)};margin-right:8px;vertical-align:middle"></span>${r.name}</td>
+    <td style="text-align:right;font-size:12px;color:var(--text2)">${r.count}</td>
+    <td style="text-align:right;font-size:12px" class="${isCredit?'amount-pos':'amount-neg'}">${fmt(r.total)}</td>
+    <td style="text-align:right;font-size:12px;color:var(--text2)">${fmt(r.avg)}</td>
+    <td><div style="display:flex;align-items:center;gap:6px">
+      <div style="flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden"><div style="height:4px;width:${Math.round(r.total/maxTotal*100)}%;background:${isCredit?'var(--green)':'var(--red)'};border-radius:2px"></div></div>
+      <span style="font-size:11px;color:var(--text3);min-width:32px;text-align:right">${Math.round(r.total/totalDia*100)}%</span>
+    </div></td>
+  </tr>`).join('');
+
+  const panel = document.getElementById('rem-day-drill');
+  panel.classList.remove('hidden');
+  setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
+}
+
+function closeRemDayDrill(){
+  document.getElementById('rem-day-drill').classList.add('hidden');
 }
 
 // ── Filtro multi-select de remetentes ─────────────────────
@@ -1376,9 +1488,9 @@ function toggleRemFilter(e){
 
 function buildRemDropdown(){
   const tipo=document.getElementById('rem-tipo').value;
-  const mes=document.getElementById('rem-mes').value;
   const emp=document.getElementById('rem-empresa').value;
-  const tx=allTx.filter(t=>t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp));
+  const mesStr=remCalDate?`${remCalDate.getFullYear()}-${String(remCalDate.getMonth()+1).padStart(2,'0')}`:'';
+  const tx=allTx.filter(t=>t.type===tipo&&(!mesStr||t.date&&t.date.startsWith(mesStr))&&(!emp||t.company===emp));
   const byRem={};
   tx.forEach(t=>{ const r=t.remetente||'Outros'; if(!byRem[r]) byRem[r]=0; byRem[r]+=Math.abs(t.amount); });
   const rems=Object.entries(byRem).sort((a,b)=>b[1]-a[1]).map(([name])=>name);
@@ -2549,15 +2661,11 @@ document.addEventListener('drop',e=>{ e.preventDefault(); handleFiles(e.dataTran
 
 // Event delegation global
 document.addEventListener('click', function(e){
-  // Clique nas linhas de remetente
-  const remRow = e.target.closest && e.target.closest('.rem-row');
-  if(remRow){
-    const name = remRow.getAttribute('data-remname');
-    const tipo = remRow.getAttribute('data-tipo');
-    const mes  = remRow.getAttribute('data-mes');
-    const dia  = remRow.getAttribute('data-dia');
-    const emp  = remRow.getAttribute('data-emp');
-    if(name) openDrilldown(name, tipo, mes, emp, dia);
+  // Clique nas células do calendário de remetentes
+  const calCell = e.target.closest && e.target.closest('.rem-cal-cell');
+  if(calCell){
+    const dateStr = calCell.getAttribute('data-date');
+    if(dateStr) openRemDayDrill(dateStr);
     return;
   }
   // Clique nas linhas de categoria
