@@ -333,6 +333,7 @@ tbody tr:hover td{background:var(--bg)}
               <div class="filters" style="flex-wrap:wrap;gap:8px">
                 <select id="rem-tipo" onchange="renderRemetentes()"><option value="credit">Entradas</option><option value="debit">Saídas</option></select>
                 <select id="rem-mes" onchange="renderRemetentes()"><option value="">Todos os meses</option></select>
+                <select id="rem-dia" onchange="renderRemetentes()" style="min-width:120px"><option value="">Todos os dias</option></select>
                 <select id="rem-empresa" onchange="renderRemetentes()"><option value="">Todas as empresas</option></select>
                 <div style="position:relative;display:inline-block">
                   <button class="btn" id="rem-filter-btn" onclick="toggleRemFilter(event)" style="display:flex;align-items:center;gap:6px;font-size:12px">
@@ -1303,7 +1304,30 @@ function renderRemetentes(){
   });
   if(curEmp) empSel.value=curEmp;
 
-  const tx=allTx.filter(t=>t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp));
+  // Popula select de dia baseado no mês selecionado
+  const diaSel=document.getElementById('rem-dia');
+  const curDia=diaSel?diaSel.value:'';
+  if(diaSel){
+    const diasDisponiveis=[...new Set(
+      allTx.filter(t=>t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp))
+           .map(t=>t.date?t.date.slice(8,10):'').filter(Boolean)
+    )].sort();
+    diaSel.innerHTML='<option value="">Todos os dias</option>';
+    diasDisponiveis.forEach(d=>{
+      const o=document.createElement('option'); o.value=d;
+      o.textContent=`Dia ${parseInt(d)}`;
+      diaSel.appendChild(o);
+    });
+    if(curDia) diaSel.value=curDia;
+  }
+  const dia=diaSel?diaSel.value:'';
+
+  const tx=allTx.filter(t=>
+    t.type===tipo &&
+    (!mes||t.date&&t.date.startsWith(mes)) &&
+    (!emp||t.company===emp) &&
+    (!dia||t.date&&t.date.slice(8,10)===dia)
+  );
   const byRem={};
   tx.forEach(t=>{ const r=t.remetente||'Outros'; if(!byRem[r]) byRem[r]={count:0,total:0}; byRem[r].count++; byRem[r].total+=Math.abs(t.amount); });
 
@@ -1332,7 +1356,7 @@ function renderRemetentes(){
   if(label) label.textContent=remFiltroSelecionados.size>0?`${remFiltroSelecionados.size} selecionado(s)`:'Filtrar remetentes';
 
   document.getElementById('rem-tbody').innerHTML=rows.slice(0,200).map((r,i)=>`
-    <tr class="rem-row" data-remname="${r.name.replace(/"/g,'&quot;')}" data-tipo="${tipo}" data-mes="${mes}" data-emp="${emp}" style="cursor:pointer">
+    <tr class="rem-row" data-remname="${r.name.replace(/"/g,'&quot;')}" data-tipo="${tipo}" data-mes="${mes}" data-dia="${dia}" data-emp="${emp}" style="cursor:pointer">
       <td style="font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color(i)};margin-right:10px;vertical-align:middle"></span>${r.name}</td>
       <td style="text-align:right;color:var(--text2)">${r.count}</td>
       <td style="text-align:right" class="${tipo==='credit'?'amount-pos':'amount-neg'}">${fmt(r.total)}</td>
@@ -1401,8 +1425,14 @@ document.addEventListener('click', function(e){
     dd.style.display='none';
   }
 });
-function openDrilldown(name,tipo,mes,emp){
-  const tx=allTx.filter(t=>t.remetente===name&&t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp));
+function openDrilldown(name,tipo,mes,emp,dia){
+  const tx=allTx.filter(t=>
+    t.remetente===name &&
+    t.type===tipo &&
+    (!mes||t.date&&t.date.startsWith(mes)) &&
+    (!emp||t.company===emp) &&
+    (!dia||t.date&&t.date.slice(8,10)===dia)
+  );
   const byDay={};
   tx.forEach(t=>{ const d=t.date||''; if(!byDay[d]) byDay[d]={count:0,total:0}; byDay[d].count++; byDay[d].total+=Math.abs(t.amount); });
   const days=Object.keys(byDay).filter(Boolean).sort();
@@ -2525,8 +2555,9 @@ document.addEventListener('click', function(e){
     const name = remRow.getAttribute('data-remname');
     const tipo = remRow.getAttribute('data-tipo');
     const mes  = remRow.getAttribute('data-mes');
+    const dia  = remRow.getAttribute('data-dia');
     const emp  = remRow.getAttribute('data-emp');
-    if(name) openDrilldown(name, tipo, mes, emp);
+    if(name) openDrilldown(name, tipo, mes, emp, dia);
     return;
   }
   // Clique nas linhas de categoria
