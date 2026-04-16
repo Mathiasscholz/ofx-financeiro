@@ -330,10 +330,26 @@ tbody tr:hover td{background:var(--bg)}
           <div class="table-section">
             <div class="table-header">
               <h3>Remetentes</h3>
-              <div class="filters">
+              <div class="filters" style="flex-wrap:wrap;gap:8px">
                 <select id="rem-tipo" onchange="renderRemetentes()"><option value="credit">Entradas</option><option value="debit">Saídas</option></select>
                 <select id="rem-mes" onchange="renderRemetentes()"><option value="">Todos os meses</option></select>
                 <select id="rem-empresa" onchange="renderRemetentes()"><option value="">Todas as empresas</option></select>
+                <div style="position:relative;display:inline-block">
+                  <button class="btn" id="rem-filter-btn" onclick="toggleRemFilter(event)" style="display:flex;align-items:center;gap:6px;font-size:12px">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <span id="rem-filter-label">Filtrar remetentes</span>
+                  </button>
+                  <div id="rem-filter-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:50;min-width:280px;max-height:300px;overflow:hidden;display:flex;flex-direction:column">
+                    <div style="padding:8px;border-bottom:1px solid var(--border2)">
+                      <input id="rem-filter-search" placeholder="Buscar remetente..." style="width:100%;font-size:12px;padding:6px 8px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg);color:var(--text)" oninput="filterRemDropdown()">
+                    </div>
+                    <div style="overflow-y:auto;flex:1" id="rem-filter-list"></div>
+                    <div style="padding:8px;border-top:1px solid var(--border2);display:flex;gap:6px">
+                      <button class="btn btn-sm" onclick="clearRemFilter()" style="flex:1">Limpar</button>
+                      <button class="btn btn-sm btn-primary" onclick="applyRemFilter()" style="flex:1">Aplicar</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="table-wrap">
@@ -1259,27 +1275,132 @@ function populateRemFiltros(){
   [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; emp.appendChild(o); });
   if(cure) emp.value=cure;
 }
+// Remetentes selecionados no filtro multi-select
+let remFiltroSelecionados = new Set();
+
 function renderRemetentes(){
   closeDrilldown();
   const tipo=document.getElementById('rem-tipo').value;
   const mes=document.getElementById('rem-mes').value;
   const emp=document.getElementById('rem-empresa').value;
+
+  // Popula selects de mês e empresa
+  const mesSel=document.getElementById('rem-mes');
+  const curMes=mesSel.value;
+  mesSel.innerHTML='<option value="">Todos os meses</option>';
+  [...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort().forEach(m=>{
+    const[y,mo]=m.split('-'); const o=document.createElement('option'); o.value=m;
+    o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
+    mesSel.appendChild(o);
+  });
+  if(curMes) mesSel.value=curMes;
+
+  const empSel=document.getElementById('rem-empresa');
+  const curEmp=empSel.value;
+  empSel.innerHTML='<option value="">Todas as empresas</option>';
+  [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
+    const o=document.createElement('option'); o.value=c; o.textContent=c; empSel.appendChild(o);
+  });
+  if(curEmp) empSel.value=curEmp;
+
   const tx=allTx.filter(t=>t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp));
   const byRem={};
   tx.forEach(t=>{ const r=t.remetente||'Outros'; if(!byRem[r]) byRem[r]={count:0,total:0}; byRem[r].count++; byRem[r].total+=Math.abs(t.amount); });
-  const rows=Object.entries(byRem).map(([name,d])=>({name,count:d.count,total:d.total,avg:d.total/d.count}));
+
+  let rows=Object.entries(byRem).map(([name,d])=>({name,count:d.count,total:d.total,avg:d.total/d.count}));
   rows.sort((a,b)=>remSort.dir*(a[remSort.col]>b[remSort.col]?1:-1));
+
+  // Aplica filtro de remetentes selecionados
+  if(remFiltroSelecionados.size>0){
+    rows=rows.filter(r=>remFiltroSelecionados.has(r.name));
+  }
+
   const maxTotal=Math.max(...rows.map(r=>r.total),1);
   const totalGeral=rows.reduce((s,r)=>s+r.total,0);
-  document.getElementById('rem-tbody').innerHTML=rows.slice(0,100).map((r,i)=>`
-    <tr class="rem-row" onclick="openDrilldown('${r.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}','${tipo}','${mes}','${emp}')">
+
+  // Linha de total no rodapé
+  const totalRow=rows.length>0?`
+    <tr style="border-top:2px solid var(--border2);font-weight:700;background:var(--bg2)">
+      <td style="padding-top:10px">Total (${rows.length} remetentes)</td>
+      <td style="text-align:right;padding-top:10px;color:var(--text2)">${rows.reduce((s,r)=>s+r.count,0)}</td>
+      <td style="text-align:right;padding-top:10px" class="${tipo==='credit'?'amount-pos':'amount-neg'}">${fmt(totalGeral)}</td>
+      <td colspan="2"></td>
+    </tr>`:'';
+
+  // Atualiza label do botão de filtro
+  const label=document.getElementById('rem-filter-label');
+  if(label) label.textContent=remFiltroSelecionados.size>0?`${remFiltroSelecionados.size} selecionado(s)`:'Filtrar remetentes';
+
+  document.getElementById('rem-tbody').innerHTML=rows.slice(0,200).map((r,i)=>`
+    <tr class="rem-row" data-remname="${r.name.replace(/"/g,'&quot;')}" data-tipo="${tipo}" data-mes="${mes}" data-emp="${emp}" style="cursor:pointer">
       <td style="font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color(i)};margin-right:10px;vertical-align:middle"></span>${r.name}</td>
       <td style="text-align:right;color:var(--text2)">${r.count}</td>
       <td style="text-align:right" class="${tipo==='credit'?'amount-pos':'amount-neg'}">${fmt(r.total)}</td>
       <td style="text-align:right;color:var(--text2)">${fmt(r.avg)}</td>
       <td><div class="rem-bar-wrap"><div class="rem-bar"><div class="rem-fill" style="width:${Math.round(r.total/maxTotal*100)}%;background:${tipo==='credit'?'var(--green)':'var(--red)'}"></div></div><span style="font-size:11px;color:var(--text3);min-width:32px;text-align:right">${Math.round(r.total/totalGeral*100)}%</span></div></td>
-    </tr>`).join('');
+    </tr>`).join('')+totalRow;
 }
+
+// ── Filtro multi-select de remetentes ─────────────────────
+function toggleRemFilter(e){
+  e.stopPropagation();
+  const dd=document.getElementById('rem-filter-dropdown');
+  const isOpen=dd.style.display==='flex';
+  if(!isOpen){ buildRemDropdown(); dd.style.display='flex'; dd.style.flexDirection='column'; }
+  else dd.style.display='none';
+}
+
+function buildRemDropdown(){
+  const tipo=document.getElementById('rem-tipo').value;
+  const mes=document.getElementById('rem-mes').value;
+  const emp=document.getElementById('rem-empresa').value;
+  const tx=allTx.filter(t=>t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp));
+  const byRem={};
+  tx.forEach(t=>{ const r=t.remetente||'Outros'; if(!byRem[r]) byRem[r]=0; byRem[r]+=Math.abs(t.amount); });
+  const rems=Object.entries(byRem).sort((a,b)=>b[1]-a[1]).map(([name])=>name);
+  window._remDropdownList=rems;
+  renderRemDropdownItems(rems);
+  document.getElementById('rem-filter-search').value='';
+}
+
+function renderRemDropdownItems(rems){
+  document.getElementById('rem-filter-list').innerHTML=rems.map(name=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border2)">
+      <input type="checkbox" ${remFiltroSelecionados.has(name)?'checked':''} onchange="toggleRemItem('${name.replace(/'/g,"\'")}',this.checked)" style="cursor:pointer">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${name}</span>
+    </label>`).join('');
+}
+
+function filterRemDropdown(){
+  const s=document.getElementById('rem-filter-search').value.toLowerCase();
+  const filtered=(window._remDropdownList||[]).filter(n=>n.toLowerCase().includes(s));
+  renderRemDropdownItems(filtered);
+}
+
+function toggleRemItem(name, checked){
+  if(checked) remFiltroSelecionados.add(name);
+  else remFiltroSelecionados.delete(name);
+}
+
+function applyRemFilter(){
+  document.getElementById('rem-filter-dropdown').style.display='none';
+  renderRemetentes();
+}
+
+function clearRemFilter(){
+  remFiltroSelecionados.clear();
+  document.getElementById('rem-filter-dropdown').style.display='none';
+  renderRemetentes();
+}
+
+// Fecha dropdown ao clicar fora
+document.addEventListener('click', function(e){
+  const dd=document.getElementById('rem-filter-dropdown');
+  const btn=document.getElementById('rem-filter-btn');
+  if(dd&&btn&&!dd.contains(e.target)&&!btn.contains(e.target)){
+    dd.style.display='none';
+  }
+});
 function openDrilldown(name,tipo,mes,emp){
   const tx=allTx.filter(t=>t.remetente===name&&t.type===tipo&&(!mes||t.date&&t.date.startsWith(mes))&&(!emp||t.company===emp));
   const byDay={};
@@ -2398,6 +2519,16 @@ document.addEventListener('drop',e=>{ e.preventDefault(); handleFiles(e.dataTran
 
 // Event delegation global
 document.addEventListener('click', function(e){
+  // Clique nas linhas de remetente
+  const remRow = e.target.closest && e.target.closest('.rem-row');
+  if(remRow){
+    const name = remRow.getAttribute('data-remname');
+    const tipo = remRow.getAttribute('data-tipo');
+    const mes  = remRow.getAttribute('data-mes');
+    const emp  = remRow.getAttribute('data-emp');
+    if(name) openDrilldown(name, tipo, mes, emp);
+    return;
+  }
   // Clique nas linhas de categoria
   const row = e.target.closest && e.target.closest('.cat-row');
   if(row){
