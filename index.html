@@ -1022,6 +1022,11 @@ tbody tr:hover td{background:var(--bg)}
 <script>
 
 
+// ── Supabase ──────────────────────────────────────────────
+const SUPABASE_URL = 'https://trtebwwzfnnjltbdhpay.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRydGVid3d6Zm5uamx0YmRocGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTQzNTQsImV4cCI6MjA5MDEzMDM1NH0.eOhEEiT7HUvnukX2Vd-YnL9YJ_038z2lwz3nNHw2ej8';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 // ── Autenticação ──────────────────────────────────────────
 let currentUser = null;
 let currentRole = 'viewer'; // 'admin' ou 'viewer'
@@ -1168,10 +1173,6 @@ sb.auth.onAuthStateChange((event, session)=>{
   if(event === 'SIGNED_OUT') showLoginScreen();
 });
 
-// ── Supabase ──────────────────────────────────────────────
-const SUPABASE_URL = 'https://trtebwwzfnnjltbdhpay.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRydGVid3d6Zm5uamx0YmRocGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTQzNTQsImV4cCI6MjA5MDEzMDM1NH0.eOhEEiT7HUvnukX2Vd-YnL9YJ_038z2lwz3nNHw2ej8';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let allTx=[], accounts=[], customCats=[], learnedRules={}, ignoredRemetentes=new Set(), saldoInicialData={dataIni:'',saldoCC:0,saldoFundo:0};
 let unknownQueue=[], currentUnknown=null;
