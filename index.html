@@ -1083,11 +1083,12 @@ function applyRoleRestrictions(){
 }
 
 function showLoginScreen(){
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('login-screen').style.alignItems = 'center';
-  document.getElementById('login-screen').style.justifyContent = 'center';
-  document.querySelector('.layout').style.display = 'none';
-  document.getElementById('loader').style.display = 'none';
+  const loginEl = document.getElementById('login-screen');
+  const layoutEl = document.querySelector('.layout');
+  const loaderEl = document.getElementById('loader');
+  if(loginEl){ loginEl.style.display='flex'; loginEl.style.alignItems='center'; loginEl.style.justifyContent='center'; }
+  if(layoutEl) layoutEl.style.display='none';
+  if(loaderEl) loaderEl.style.display='none';
 }
 
 function hideLoginScreen(){
@@ -2982,19 +2983,24 @@ document.addEventListener('drop',e=>{ e.preventDefault(); handleFiles(e.dataTran
 
 // ── Init ──────────────────────────────────────────────────
 (async()=>{
-  // Esconde layout até confirmar autenticação
-  document.querySelector('.layout').style.display = 'none';
-
-  const isAuth = await checkAuth();
-  if(!isAuth) return; // mostra login screen
+  // Esconde layout e loader até confirmar autenticação
+  const layoutEl = document.querySelector('.layout');
+  const loaderEl = document.getElementById('loader');
+  if(layoutEl) layoutEl.style.display = 'none';
+  if(loaderEl) loaderEl.style.display = 'none';
 
   try{
+    const isAuth = await checkAuth();
+    if(!isAuth) return; // showLoginScreen já foi chamado
+
+    if(loaderEl) loaderEl.style.display = 'flex';
     await loadAll();
-  }catch(e){
-    console.error('Erro crítico no loadAll:',e);
-  }finally{
-    document.getElementById('loader').style.display='none';
+    if(loaderEl) loaderEl.style.display = 'none';
     refresh();
+  }catch(e){
+    console.error('Erro crítico:', e);
+    if(loaderEl) loaderEl.style.display = 'none';
+    showLoginScreen();
   }
 })();
 
