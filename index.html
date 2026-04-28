@@ -1487,8 +1487,9 @@ function refresh(){
   document.getElementById('rem-content').classList.toggle('hidden',!has);
   document.getElementById('no-data-tx').classList.toggle('hidden',has);
   document.getElementById('tx-content').classList.toggle('hidden',!has);
-  document.getElementById('no-data-cat').classList.toggle('hidden',has);
-  document.getElementById('cat-content').classList.toggle('hidden',!has);
+  // Categorias aparecem sempre (padrão + personalizadas)
+  document.getElementById('no-data-cat').classList.add('hidden');
+  document.getElementById('cat-content').classList.remove('hidden');
   const emps=[...new Set(accounts.map(a=>a.company))];
   const hasEmp=emps.length>0&&has;
   document.getElementById('no-data-emp').classList.toggle('hidden',hasEmp);
