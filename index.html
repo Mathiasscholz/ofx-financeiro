@@ -502,8 +502,8 @@ tbody tr:hover td{background:var(--bg)}
     <div id="tab-analise-cat" class="hidden">
       <div class="topbar"><div class="topbar-title">Análise por categoria</div></div>
       <div class="content">
-        <div id="no-data-cat" class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><h3>Sem dados</h3><p>Importe arquivos OFX para ver análise por categoria</p></div>
-        <div id="cat-content" class="hidden">
+        <div id="no-data-cat" class="empty-state hidden"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><h3>Sem dados</h3><p>Importe arquivos OFX para ver análise por categoria</p></div>
+        <div id="cat-content">
           <div class="filters" style="margin-bottom:4px">
             <select id="filter-cat-mes" onchange="renderAnaliseCat()"><option value="">Todos os meses</option></select>
             <select id="filter-cat-unidade" onchange="renderAnaliseCat()"><option value="">Todas as unidades</option></select>
@@ -2895,9 +2895,14 @@ async function renderUsuarios(){
 function openNewUser(){
   document.getElementById('nu-email').value='';
   document.getElementById('nu-nome').value='';
-  document.getElementById('nu-pass').value='';
   document.getElementById('nu-role').value='viewer';
-  document.getElementById('nu-error').style.display='none';
+  const errEl = document.getElementById('nu-error');
+  errEl.style.display='none';
+  errEl.style.background='';
+  errEl.style.color='';
+  errEl.style.border='';
+  const btn = document.querySelector('#modal-new-user .btn-primary');
+  if(btn) btn.textContent='Verificar usuário';
   document.getElementById('modal-new-user').classList.remove('hidden');
 }
 
