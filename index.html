@@ -154,7 +154,7 @@ tbody tr:hover td{background:var(--bg)}
 .empty-state p{font-size:13px}
 .empty-state h3{font-size:15px;font-weight:500;color:var(--text2);margin-bottom:6px}
 /* Modal */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(2px)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(2px)}
 .modal{background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border2);padding:26px;width:460px;max-width:95vw;display:flex;flex-direction:column;gap:18px;box-shadow:0 20px 60px rgba(0,0,0,.15);max-height:90vh;overflow-y:auto}
 .modal h2{font-size:15px;font-weight:600}
 .modal-info{background:var(--bg);border-radius:var(--radius-sm);padding:12px;font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:5px;border:1px solid var(--border)}
@@ -894,6 +894,27 @@ tbody tr:hover td{background:var(--bg)}
       </div>
     </div>
   </div>
+
+  <!-- Modal novo usuário (dentro do tab para herdar z-index) -->
+  <div class="modal-overlay hidden" id="modal-new-user" style="z-index:400">
+    <div class="modal">
+      <h2>Novo usuário</h2>
+      <div class="field"><label>E-mail</label><input id="nu-email" type="email" placeholder="usuario@email.com"></div>
+      <div class="field"><label>Nome</label><input id="nu-nome" placeholder="Nome do usuário"></div>
+      <div class="field"><label>Senha inicial</label><input id="nu-pass" type="password" placeholder="Mínimo 6 caracteres"></div>
+      <div class="field"><label>Perfil de acesso</label>
+        <select id="nu-role">
+          <option value="viewer">👁 Visualizador — só leitura</option>
+          <option value="admin">👑 Administrador — acesso total</option>
+        </select>
+      </div>
+      <div id="nu-error" style="display:none;font-size:12px;color:var(--red);padding:8px 12px;background:var(--red-bg);border-radius:var(--radius-sm)"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="document.getElementById('modal-new-user').classList.add('hidden')">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmNewUser()">Criar usuário</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL LIMPEZA -->
@@ -977,27 +998,6 @@ tbody tr:hover td{background:var(--bg)}
     <div class="modal-actions">
       <button class="btn" onclick="closeRangeRuleModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmSaveRangeRule()">Salvar regra</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL novo usuário -->
-<div class="modal-overlay hidden" id="modal-new-user">
-  <div class="modal">
-    <h2>Novo usuário</h2>
-    <div class="field"><label>E-mail</label><input id="nu-email" type="email" placeholder="usuario@email.com"></div>
-    <div class="field"><label>Nome</label><input id="nu-nome" placeholder="Nome do usuário"></div>
-    <div class="field"><label>Senha inicial</label><input id="nu-pass" type="password" placeholder="Mínimo 6 caracteres"></div>
-    <div class="field"><label>Perfil de acesso</label>
-      <select id="nu-role">
-        <option value="viewer">👁 Visualizador — só leitura</option>
-        <option value="admin">👑 Administrador — acesso total</option>
-      </select>
-    </div>
-    <div id="nu-error" style="display:none;font-size:12px;color:var(--red);padding:8px 12px;background:var(--red-bg);border-radius:var(--radius-sm)"></div>
-    <div class="modal-actions">
-      <button class="btn" onclick="document.getElementById('modal-new-user').classList.add('hidden')">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmNewUser()">Criar usuário</button>
     </div>
   </div>
 </div>
