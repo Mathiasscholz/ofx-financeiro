@@ -900,8 +900,7 @@ tbody tr:hover td{background:var(--bg)}
     <div class="modal">
       <h2>Novo usuário</h2>
       <div class="field"><label>E-mail</label><input id="nu-email" type="email" placeholder="usuario@email.com"></div>
-      <div class="field"><label>Nome</label><input id="nu-nome" placeholder="Nome do usuário"></div>
-      <div class="field"><label>Senha inicial</label><input id="nu-pass" type="password" placeholder="Mínimo 6 caracteres"></div>
+      <div class="field"><label>Nome (opcional)</label><input id="nu-nome" placeholder="Nome do usuário"></div>
       <div class="field"><label>Perfil de acesso</label>
         <select id="nu-role">
           <option value="viewer">👁 Visualizador — só leitura</option>
@@ -2904,29 +2903,40 @@ function openNewUser(){
 async function confirmNewUser(){
   const email = document.getElementById('nu-email').value.trim();
   const nome  = document.getElementById('nu-nome').value.trim();
-  const pass  = document.getElementById('nu-pass').value;
   const role  = document.getElementById('nu-role').value;
   const errEl = document.getElementById('nu-error');
   errEl.style.display='none';
 
-  if(!email||!pass){ errEl.textContent='E-mail e senha são obrigatórios.'; errEl.style.display='block'; return; }
-  if(pass.length<6){ errEl.textContent='A senha deve ter ao menos 6 caracteres.'; errEl.style.display='block'; return; }
+  if(!email){ errEl.textContent='E-mail é obrigatório.'; errEl.style.display='block'; return; }
 
   try{
-    // Cria usuário via Supabase Admin (usa service role — não disponível no frontend)
-    // Alternativa: cria via signUp e depois atualiza perfil
-    const { data, error } = await sb.auth.signUp({ email, password: pass, options:{ data:{ nome } } });
-    if(error) throw error;
-
-    const userId = data.user?.id;
-    if(userId){
-      // Atualiza perfil com role e nome corretos
-      await sb.from('perfis').upsert({ id:userId, email, nome, role }, {onConflict:'id'});
+    // Verifica se usuário já existe na tabela perfis
+    const { data: existing } = await sb.from('perfis').select('id').eq('email', email).maybeSingle();
+    
+    if(existing){
+      // Usuário já existe — apenas atualiza o role e nome
+      await sb.from('perfis').update({ role, nome: nome||null }).eq('email', email);
+      document.getElementById('modal-new-user').classList.add('hidden');
+      toast(`Perfil de ${email} atualizado para ${role==='admin'?'administrador':'visualizador'}!`,'success');
+      renderUsuarios();
+      return;
     }
 
-    document.getElementById('modal-new-user').classList.add('hidden');
-    toast(`Usuário ${email} criado como ${role==='admin'?'administrador':'visualizador'}!`,'success');
-    renderUsuarios();
+    // Usuário não existe ainda — instrui o admin a criar pelo Supabase
+    errEl.innerHTML = `
+      <strong>Para criar um novo usuário:</strong><br>
+      1. Acesse <a href="https://supabase.com/dashboard/project/trtebwwzfnnjltbdhpay/auth/users" target="_blank" style="color:var(--accent)">Supabase → Authentication → Users</a><br>
+      2. Clique em <strong>Add user</strong> e cadastre: <code>${email}</code><br>
+      3. Marque <strong>Auto Confirm User</strong><br>
+      4. Volte aqui e clique em <strong>Salvar perfil</strong> para definir o nível de acesso
+    `;
+    errEl.style.display='block';
+    errEl.style.background='rgba(59,139,212,.1)';
+    errEl.style.color='var(--text)';
+    errEl.style.border='1px solid rgba(59,139,212,.3)';
+    
+    // Muda botão para "Salvar perfil"
+    document.querySelector('#modal-new-user .btn-primary').textContent='Salvar perfil';
   }catch(e){
     errEl.textContent = 'Erro: ' + (e.message||'Tente novamente.');
     errEl.style.display='block';
