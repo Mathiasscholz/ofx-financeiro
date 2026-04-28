@@ -2996,6 +2996,7 @@ function showTab(id){
   if(id==='fundo'){ loadSaldoInicial(); if(allTx.length>0) renderFundo(); }
   if(id==='vendas') renderVendas();
   if(id==='usuarios') renderUsuarios();
+  if(id==='categorias-tab') renderCatGrid();
 }
 
 // ── Drag & Drop ───────────────────────────────────────────
@@ -3017,6 +3018,7 @@ document.addEventListener('drop',e=>{ e.preventDefault(); handleFiles(e.dataTran
     if(loaderEl) loaderEl.style.display = 'flex';
     await loadAll();
     if(loaderEl) loaderEl.style.display = 'none';
+    renderCatGrid();
     refresh();
   }catch(e){
     console.error('Erro crítico:', e);
