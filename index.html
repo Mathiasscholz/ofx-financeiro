@@ -2346,7 +2346,7 @@ function renderFundo(){
   const mes   = document.getElementById('fundo-mes').value;
   const unid  = document.getElementById('fundo-unidade').value;
 
-  // Popula filtros preservando seleção atual
+  // Popula filtros
   const mesSel = document.getElementById('fundo-mes');
   const unidSel = document.getElementById('fundo-unidade');
   const curMes = mesSel.value;
@@ -2367,8 +2367,7 @@ function renderFundo(){
   });
   if(curUnid) unidSel.value=curUnid;
 
-  // Filtra por período e unidade (usa valores atuais após repopular)
-  const mesFiltro = mesSel.value;
+  const mesFiltro  = mesSel.value;
   const unidFiltro = unidSel.value;
 
   const fundoTx = getFundoTx()
@@ -2382,67 +2381,113 @@ function renderFundo(){
 
   document.getElementById('fundo-badge').textContent=`${fundoTx.length} movimentações`;
 
-  // Métricas
+  // Métricas do período filtrado
   let totalAplic=0, totalResgate=0;
   fundoTx.forEach(t=>{
     if(getFundoTipo(t)==='aplicacao') totalAplic+=Math.abs(t.amount);
     else totalResgate+=Math.abs(t.amount);
   });
-  const saldoAtual = totalAplic - totalResgate;
+  const saldoMovim = totalAplic - totalResgate;
   const qtdAplic   = fundoTx.filter(t=>getFundoTipo(t)==='aplicacao').length;
   const qtdResgate = fundoTx.filter(t=>getFundoTipo(t)==='resgate').length;
 
-  const unidFiltro2 = document.getElementById('fundo-unidade')?.value||'';
-  const si = getSaldoInicial(unidFiltro2);
-  const saldoFundoTotal = (si.saldoFundo||0) + saldoAtual;
+  // Fix 1: saldo total consolidado — soma saldo inicial de TODAS as empresas + todas as movimentações
+  let saldoIniTotal = 0;
+  if(!unidFiltro){
+    // Sem filtro de unidade: soma saldo inicial de todas as empresas
+    const empresas = [...new Set(allTx.map(t=>t.company).filter(Boolean))];
+    empresas.forEach(emp=>{
+      const si = getSaldoInicial(emp);
+      saldoIniTotal += (si.saldoFundo||0);
+    });
+  } else {
+    const si = getSaldoInicial(unidFiltro);
+    saldoIniTotal = si.saldoFundo||0;
+  }
+
+  // Saldo total = saldo inicial (todas empresas) + todas as movimentações históricas até hoje
+  const todasFundoTx = getFundoTx()
+    .filter(t=>(!unidFiltro||t.company===unidFiltro))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  let saldoHistorico = 0;
+  todasFundoTx.forEach(t=>{
+    if(getFundoTipo(t)==='aplicacao') saldoHistorico+=Math.abs(t.amount);
+    else saldoHistorico-=Math.abs(t.amount);
+  });
+  const saldoFundoTotal = saldoIniTotal + saldoHistorico;
 
   document.getElementById('fundo-metrics').innerHTML=`
-    <div class="metric"><div class="metric-label">Saldo atual no fundo</div><div class="metric-val ${saldoFundoTotal>=0?'pos':'neg'}">${fmt(saldoFundoTotal)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${si.saldoFundo?'Saldo ini: '+fmt(si.saldoFundo)+' + ':''}Movim: ${fmtS(saldoAtual)}</div></div>
-    <div class="metric"><div class="metric-label">Total aplicado (período)</div><div class="metric-val pos">${fmt(totalAplic)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdAplic} operações</div></div>
-    <div class="metric"><div class="metric-label">Total resgatado (período)</div><div class="metric-val neg">${fmt(totalResgate)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdResgate} operações</div></div>`;
+    <div class="metric"><div class="metric-label">Saldo total no fundo${!unidFiltro?' (todas as unidades)':''}</div><div class="metric-val ${saldoFundoTotal>=0?'pos':'neg'}">${fmt(saldoFundoTotal)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${saldoIniTotal>0?'Saldo ini: '+fmt(saldoIniTotal)+' + ':''}Movim: ${fmtS(saldoHistorico)}</div></div>
+    <div class="metric"><div class="metric-label">Aplicado no período</div><div class="metric-val pos">${fmt(totalAplic)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdAplic} operações</div></div>
+    <div class="metric"><div class="metric-label">Resgatado no período</div><div class="metric-val neg">${fmt(totalResgate)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdResgate} operações</div></div>`;
 
-    // Gráfico — saldo acumulado por dia
-  let saldo=0;
-  const porDia={};
-  fundoTx.forEach(t=>{
-    const d=t.date||''; if(!d) return;
-    if(!porDia[d]) porDia[d]=0;
-    if(getFundoTipo(t)==='aplicacao') porDia[d]+=Math.abs(t.amount);
-    else porDia[d]-=Math.abs(t.amount);
+  // Fix 2: Gráfico de barras por MÊS — saldo acumulado + aplicado no mês
+  // Agrega por mês usando TODAS as transações (sem filtro de mês) para calcular saldo correto
+  const txParaGrafico = getFundoTx()
+    .filter(t=>(!unidFiltro||t.company===unidFiltro))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  const porMes = {};
+  txParaGrafico.forEach(t=>{
+    const m = t.date?t.date.slice(0,7):''; if(!m) return;
+    if(!porMes[m]) porMes[m]={aplic:0,resgate:0};
+    if(getFundoTipo(t)==='aplicacao') porMes[m].aplic+=Math.abs(t.amount);
+    else porMes[m].resgate+=Math.abs(t.amount);
   });
-  const dias=Object.keys(porDia).sort();
-  const saldos=[]; let acum=0;
-  dias.forEach(d=>{ acum+=porDia[d]; saldos.push(+acum.toFixed(2)); });
-  const labels=dias.map(d=>{ const[y,m,dia]=d.split('-'); return`${dia}/${m}`; });
+
+  const meses = Object.keys(porMes).sort();
+  const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const mesLabels = meses.map(m=>{const[y,mo]=m.split('-');return MESES_PT[+mo-1]+'/'+y.slice(2);});
+
+  // Saldo acumulado ao final de cada mês (saldo ini + movimentações até aquele mês)
+  let acum = saldoIniTotal;
+  const saldosPorMes = meses.map(m=>{
+    acum += (porMes[m].aplic - porMes[m].resgate);
+    return +acum.toFixed(2);
+  });
+  const aplicPorMes = meses.map(m=>+porMes[m].aplic.toFixed(2));
 
   const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
   destroyChart(chartFundo);
   chartFundo=new Chart(document.getElementById('chart-fundo'),{
-    type:'line',
-    data:{labels,datasets:[{
-      label:'Saldo no fundo',
-      data:saldos,
-      borderColor:'#1D9E75',
-      backgroundColor:'rgba(29,158,117,.08)',
-      borderWidth:2,
-      pointRadius:dias.length<=31?3:1,
-      tension:.3,
-      fill:true
-    }]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},
+    type:'bar',
+    data:{
+      labels:mesLabels,
+      datasets:[
+        {
+          label:'Saldo no fundo',
+          data:saldosPorMes,
+          backgroundColor:'rgba(29,158,117,.75)',
+          borderRadius:4,
+          order:1
+        },
+        {
+          label:'Aplicado no mês',
+          data:aplicPorMes,
+          backgroundColor:'rgba(59,139,212,.6)',
+          borderRadius:4,
+          order:2
+        }
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true,position:'top',labels:{color:tc,font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`}}
+      },
       scales:{
-        x:{ticks:{color:tc,font:{size:10},maxRotation:45,autoSkip:dias.length>20},grid:{display:false}},
+        x:{ticks:{color:tc,font:{size:10},maxRotation:45,autoSkip:meses.length>18},grid:{display:false}},
         y:{ticks:{color:tc,font:{size:10},callback:v=>'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v)},grid:{color:gc}}
       }
     }
   });
 
-  document.getElementById('fundo-legend').innerHTML=`
-    <span class="legend-item"><span class="legend-sq" style="background:#1D9E75"></span>Saldo acumulado no fundo</span>`;
+  document.getElementById('fundo-legend').innerHTML='';
 
   renderFundoTabela();
 }
+
 
 function renderFundoTabela(){
   const mes   = document.getElementById('fundo-mes').value;
