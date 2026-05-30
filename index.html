@@ -2730,6 +2730,44 @@ async function handleXmlZip(file){
     }
   }
 }
+// ── Inicialização ─────────────────────────────────────────
+(async()=>{
+  const layoutEl = document.querySelector('.layout');
+  const loaderEl = document.getElementById('loader');
+  if(layoutEl) layoutEl.style.display = 'none';
+  if(loaderEl) loaderEl.style.display = 'none';
+
+  try{
+    const isAuth = await checkAuth();
+    if(!isAuth) return;
+
+    if(loaderEl) loaderEl.style.display = 'flex';
+    renderCatGrid();
+    await loadAll();
+    if(loaderEl) loaderEl.style.display = 'none';
+    renderCatGrid();
+    refresh();
+  }catch(e){
+    console.error('Erro crítico:', e);
+    if(loaderEl) loaderEl.style.display = 'none';
+    showLoginScreen();
+  }
+})();
+
+// Event delegation global
+document.addEventListener('click', function(e){
+  const calCell = e.target.closest && e.target.closest('.rem-cal-cell');
+  if(calCell){ const dateStr=calCell.getAttribute('data-date'); if(dateStr) openRemDayDrill(dateStr); return; }
+  const row = e.target.closest && e.target.closest('.cat-row');
+  if(row){ const catName=row.getAttribute('data-catname'); const mes=row.getAttribute('data-catmes')||''; const unid=row.getAttribute('data-catunid')||''; if(catName) openCatDrilldown(catName,mes,unid); return; }
+  const btn = e.target.closest && e.target.closest('button[data-action]');
+  if(!btn) return;
+  const action=btn.getAttribute('data-action'); const remIdx=parseInt(btn.getAttribute('data-rem'));
+  if(action==='edit-ignored'&&window._ignoredList) editIgnored(window._ignoredList[remIdx]);
+  else if(action==='remove-ignored'&&window._ignoredList) removeIgnored(window._ignoredList[remIdx]);
+  else if(action==='delete-rule'&&window._learnedList) deleteRule(window._learnedList[remIdx].remetente);
+});
+
 </script>
 </body>
 </html>
