@@ -2622,7 +2622,6 @@ async function handleXmlZip(file){
   document.getElementById('vendas-loading-txt').textContent='Descompactando ZIP...';
 
   try{
-    // Usa JSZip via CDN (carrega dinamicamente)
     if(!window.JSZip){
       await new Promise((res,rej)=>{
         const s=document.createElement('script');
@@ -2632,34 +2631,55 @@ async function handleXmlZip(file){
       });
     }
 
+    // Função auxiliar para extrair todos os XMLs de um zip (incluindo ZIPs aninhados)
+    async function extractXmls(zipObj){
+      const xmlMap = {}; // name -> content string
+      for(const [name, entry] of Object.entries(zipObj.files)){
+        if(entry.dir) continue;
+        const lname = name.toLowerCase();
+        if(lname.endsWith('.xml')){
+          xmlMap[name] = await entry.async('string');
+        } else if(lname.endsWith('.zip')){
+          // ZIP dentro de ZIP — extrai recursivamente
+          try{
+            const innerData = await entry.async('arraybuffer');
+            const innerZip = await JSZip.loadAsync(innerData);
+            const innerXmls = await extractXmls(innerZip);
+            Object.assign(xmlMap, innerXmls);
+          }catch(e){ console.warn('ZIP aninhado ignorado:', name, e); }
+        }
+      }
+      return xmlMap;
+    }
+
     const zip = await JSZip.loadAsync(file);
-    const xmlFiles = Object.keys(zip.files).filter(n=>n.toLowerCase().endsWith('.xml') && !zip.files[n].dir);
-    document.getElementById('vendas-loading-txt').textContent=`Processando ${xmlFiles.length} arquivos XML...`;
+    document.getElementById('vendas-loading-txt').textContent='Extraindo arquivos (incluindo ZIPs aninhados)...';
+    const xmlMap = await extractXmls(zip);
+    const xmlNames = Object.keys(xmlMap);
+    document.getElementById('vendas-loading-txt').textContent=`Processando ${xmlNames.length} arquivos XML...`;
 
     const notas = [];
     const cancelChaves = new Set();
     let processed = 0;
 
     // Primeira passagem: identifica cancelamentos
-    for(const name of xmlFiles){
+    for(const name of xmlNames){
       if(name.toUpperCase().includes('CANCELADA')){
-        const xmlStr = await zip.files[name].async('string');
-        const r = parseXmlNota(xmlStr);
+        const r = parseXmlNota(xmlMap[name]);
         if(r && r.tipo==='cancelamento') cancelChaves.add(r.chave);
       }
     }
 
     // Segunda passagem: processa notas
-    for(const name of xmlFiles){
+    for(const name of xmlNames){
       if(name.toUpperCase().includes('CANCELADA')) continue;
-      const xmlStr = await zip.files[name].async('string');
-      const nota = parseXmlNota(xmlStr);
+      const nota = parseXmlNota(xmlMap[name]);
       if(!nota || nota.tipo==='cancelamento') continue;
       if(cancelChaves.has(nota.id)) nota.cancelada = true;
       notas.push(nota);
       processed++;
       if(processed % 100 === 0)
-        document.getElementById('vendas-loading-txt').textContent=`Processando... ${processed}/${xmlFiles.length}`;
+        document.getElementById('vendas-loading-txt').textContent=`Processando... ${processed}/${xmlNames.length}`;
     }
 
     document.getElementById('vendas-loading-txt').textContent=`Salvando ${notas.length} notas no banco...`;
@@ -2674,13 +2694,14 @@ async function handleXmlZip(file){
       for(let i=0;i<novas.length;i+=200){
         const lote = novas.slice(i,i+200).map(n=>({
           id:n.id, modelo:n.modelo, numero:n.numero, serie:n.serie,
-          data_emissao:n.data||null, hora_emissao:n.hora||null, empresa:n.empresa, cnpj_emitente:n.cnpj_emitente,
-          valor_bruto:n.valor_bruto, valor_desconto:n.valor_desconto, valor_liquido:n.valor_liquido,
+          data_emissao:n.data||null, hora_emissao:n.hora||null, empresa:n.empresa,
+          cnpj_emitente:n.cnpj_emitente, valor_bruto:n.valor_bruto,
+          valor_desconto:n.valor_desconto, valor_liquido:n.valor_liquido,
           cancelada:n.cancelada, justificativa:n.justificativa||'',
           produtos:n.produtos, mes:n.mes
         }));
         const {error} = await sb.from('vendas_xml').upsert(lote,{onConflict:'id'});
-        if(error){ 
+        if(error){
           console.error('Supabase upsert error:', error);
           throw new Error('Supabase: ' + (error.message||error.details||JSON.stringify(error)));
         }
@@ -2688,22 +2709,20 @@ async function handleXmlZip(file){
       }
       toast(`${novas.length} notas importadas com sucesso!`,'success');
     } else {
-      toast('Nenhuma nota nova encontrada no ZIP','success');
+      toast(`Processados ${notas.length} XMLs — nenhuma nota nova encontrada no ZIP`,'success');
     }
 
     await loadVendasData();
 
   }catch(e){
     console.error('Erro handleXmlZip:', e);
-    // Mostra erro persistente na tela
-    document.getElementById('vendas-loading-txt').textContent='Erro: '+( e.message || JSON.stringify(e) );
+    document.getElementById('vendas-loading-txt').textContent='Erro: '+(e.message||JSON.stringify(e));
     document.getElementById('vendas-loading-txt').style.color='var(--red)';
-    // Não esconde o loading para o usuário conseguir ler o erro
     setTimeout(()=>{
       document.getElementById('vendas-loading').style.display='none';
       document.getElementById('vendas-loading-txt').style.color='';
       document.getElementById('vendas-empty').style.display='block';
-    }, 8000); // fica visível por 8 segundos
+    }, 8000);
     return;
   }finally{
     if(document.getElementById('vendas-loading').style.display!=='none'){
@@ -2712,673 +2731,4 @@ async function handleXmlZip(file){
   }
 }
 
-async function loadVendasData(){
-  try{
-    // Carrega paginado
-    let all=[], from=0;
-    while(true){
-      const r = await sb.from('vendas_xml').select('*').range(from,from+999);
-      if(r.error) throw r.error;
-      all = all.concat(r.data||[]);
-      if((r.data||[]).length < 1000) break;
-      from += 1000;
-    }
-    vendasData = all;
-    renderVendas();
-  }catch(e){ console.error('Erro ao carregar vendas:',e); }
-}
 
-function getVendasFiltradas(){
-  const mes    = document.getElementById('vendas-mes')?.value||'';
-  const emp    = document.getElementById('vendas-empresa')?.value||'';
-  const modelo = document.getElementById('vendas-modelo')?.value||'';
-  return vendasData.filter(n=>
-    (!mes    || n.mes===mes) &&
-    (!emp    || n.cnpj_emitente===emp) &&
-    (!modelo || n.modelo===modelo)
-  );
-}
-
-function renderVendas(){
-  if(!vendasData.length){
-    document.getElementById('vendas-empty').style.display='block';
-    document.getElementById('vendas-content').style.display='none';
-    document.getElementById('vendas-filters').style.display='none';
-    document.getElementById('vendas-clear-btn').style.display='none';
-    document.getElementById('vendas-badge').textContent='';
-    return;
-  }
-
-  document.getElementById('vendas-filters').style.display='flex';
-  document.getElementById('vendas-clear-btn').style.display='inline-flex';
-  document.getElementById('vendas-empty').style.display='none';
-  document.getElementById('vendas-content').style.display='block';
-
-  // ── Popula filtros ────────────────────────────────────
-  const mesSel = document.getElementById('vendas-mes');
-  const empSel = document.getElementById('vendas-empresa');
-  const curMes = mesSel.value; const curEmp = empSel.value;
-  mesSel.innerHTML='<option value="">Todo o período</option>';
-  [...new Set(vendasData.map(n=>n.mes).filter(Boolean))].sort().forEach(m=>{
-    const[y,mo]=m.split('-');
-    const o=document.createElement('option'); o.value=m;
-    o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
-    mesSel.appendChild(o);
-  });
-  if(curMes) mesSel.value=curMes;
-  empSel.innerHTML='<option value="">Todas</option>';
-  [...new Map(vendasData.map(n=>[n.cnpj_emitente,n.empresa]))].forEach(([cnpj,nome])=>{
-    const o=document.createElement('option'); o.value=cnpj; o.textContent=nome||cnpj; empSel.appendChild(o);
-  });
-  if(curEmp) empSel.value=curEmp;
-
-  // ── Dados filtrados ───────────────────────────────────
-  const notas    = getVendasFiltradas();
-  const validas  = notas.filter(n=>!n.cancelada);
-  const canceladas = notas.filter(n=>n.cancelada);
-
-  const totBruto   = validas.reduce((s,n)=>s+(n.valor_bruto||0),0);
-  const totLiquido = validas.reduce((s,n)=>s+(n.valor_liquido||0),0);
-  const totDesc    = validas.reduce((s,n)=>s+(n.valor_desconto||0),0);
-  const totCancelVl= canceladas.reduce((s,n)=>s+(n.valor_liquido||0),0);
-
-  document.getElementById('vendas-badge').textContent=`${notas.length} notas`;
-
-  // ── Agrega produtos (DEVE VIR ANTES DOS CARDS) ────────
-  const isCombustivel = n => {
-    const u = n.toUpperCase();
-    if(/aditivo|lubrif|arla|fluido|filtro/i.test(u)) return false;
-    return /gasolina|etanol|diesel|hidratado/i.test(u);
-  };
-  const prodMap = {};
-  validas.forEach(nota=>{
-    (nota.produtos||[]).forEach(p=>{
-      if(!p.nome) return;
-      const nome = p.nome.trim();
-      if(!prodMap[nome]) prodMap[nome]={nome,qtd:0,vBruto:0,vDesc:0,vLiq:0};
-      prodMap[nome].qtd   += p.qtd||0;
-      prodMap[nome].vBruto+= p.vProd||0;
-      prodMap[nome].vDesc += p.vDesc||0;
-      prodMap[nome].vLiq  += (p.vProd||0)-(p.vDesc||0);
-    });
-  });
-  const todosProds   = Object.values(prodMap).sort((a,b)=>b.vLiq-a.vLiq);
-  const combustiveis = todosProds.filter(p=>isCombustivel(p.nome));
-  const outros       = todosProds.filter(p=>!isCombustivel(p.nome));
-  const totCombLiq   = combustiveis.reduce((s,p)=>s+p.vLiq,0);
-  const totOutrosLiq = outros.reduce((s,p)=>s+p.vLiq,0);
-
-  // ── Cards ─────────────────────────────────────────────
-  document.getElementById('vendas-metrics').innerHTML=`
-    <div class="metric"><div class="metric-label">Faturamento líquido total</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas</div></div>
-    <div class="metric"><div class="metric-label">Combustíveis</div><div class="metric-val pos">${fmt(totCombLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totCombLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
-    <div class="metric"><div class="metric-label">Outros produtos</div><div class="metric-val pos">${fmt(totOutrosLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totOutrosLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
-    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>
-    <div class="metric" style="border-left:3px solid #1D9E75"><div class="metric-label">Margem média — Combustíveis</div><div class="metric-val pos" id="card-margem-comb-val">—</div><div style="font-size:11px;color:var(--text3);margin-top:4px" id="card-margem-comb-sub">Importe NF-e de entrada para calcular</div></div>`;
-
-  // ── Alert cancelamentos ───────────────────────────────
-  const alertEl = document.getElementById('vendas-cancel-alert');
-  if(canceladas.length>0){
-    alertEl.style.display='flex';
-    const getTurno = hora => { if(!hora) return '—'; const h=parseInt(hora.split(':')[0]); if(h>=5&&h<14) return 'Turno 1'; return 'Turno 2'; };
-    const t1=canceladas.filter(n=>getTurno(n.hora_emissao)==='Turno 1').length;
-    const t2=canceladas.filter(n=>getTurno(n.hora_emissao)==='Turno 2').length;
-    const turnoMais = t1>=t2?`Turno 1 (${t1} cancel.)`:`Turno 2 (${t2} cancel.)`;
-    document.getElementById('vendas-cancel-title').textContent=`${canceladas.length} notas canceladas — ${fmt(totCancelVl)}`;
-    document.getElementById('vendas-cancel-sub').textContent=`${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento · Turno com mais cancelamentos: ${turnoMais}`;
-  } else { alertEl.style.display='none'; }
-
-  const COLORS_PROD = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#D4537E','#639922','#888780','#EF9F27','#E24B4A'];
-
-  // ── Tabela combustíveis ───────────────────────────────
-  document.getElementById('vendas-prod-tbody').innerHTML = combustiveis.map((p,i)=>{
-    const pct = totCombLiq>0?p.vLiq/totCombLiq*100:0;
-    const precoMed = p.qtd>0?p.vLiq/p.qtd:0;
-    return`<tr>
-      <td style="font-weight:500;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${COLORS_PROD[i%COLORS_PROD.length]};display:inline-block;margin-right:8px;vertical-align:middle"></span>${p.nome}</td>
-      <td style="text-align:right;font-size:12px;font-family:'DM Mono',monospace">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})} L</td>
-      <td style="text-align:right;font-size:12px" class="amount-pos">${fmt(p.vBruto)}</td>
-      <td style="text-align:right;font-size:12px" class="${p.vDesc>0?'amount-neg':''}">${p.vDesc>0?'- '+fmt(p.vDesc):'—'}</td>
-      <td style="text-align:right;font-size:12px;font-weight:600" class="amount-pos">${fmt(p.vLiq)}</td>
-      <td style="text-align:right;font-size:12px;color:var(--text2)">${precoMed>0?'R$ '+precoMed.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4}):'—'}/L</td>
-      <td style="width:120px"><div style="display:flex;align-items:center;gap:6px">
-        <div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:${COLORS_PROD[i%COLORS_PROD.length]};border-radius:3px"></div></div>
-        <span style="font-size:11px;color:var(--text2);min-width:34px;text-align:right">${pct.toFixed(1)}%</span>
-      </div></td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum combustível encontrado</td></tr>';
-
-  // ── Top 10 outros produtos ────────────────────────────
-  const top10 = outros.slice(0,10);
-  document.getElementById('vendas-outros-tbody').innerHTML = top10.map((p,i)=>{
-    const pct = totOutrosLiq>0?p.vLiq/totOutrosLiq*100:0;
-    return`<tr>
-      <td style="text-align:center;font-size:11px;font-weight:600;color:var(--text3);width:32px">${i+1}</td>
-      <td style="font-weight:500;font-size:12px">${p.nome}</td>
-      <td style="text-align:right;font-size:12px;font-family:'DM Mono',monospace">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
-      <td style="text-align:right;font-size:12px;font-weight:600" class="amount-pos">${fmt(p.vLiq)}</td>
-      <td style="width:100px"><div style="display:flex;align-items:center;gap:6px">
-        <div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:#EF9F27;border-radius:3px"></div></div>
-        <span style="font-size:11px;color:var(--text2);min-width:30px;text-align:right">${pct.toFixed(1)}%</span>
-      </div></td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3)">Nenhum outro produto encontrado</td></tr>';
-
-  // ── Tabela canceladas com horário e turno ─────────────
-  const getTurno2 = hora => {
-    if(!hora) return '—';
-    const h = parseInt(hora.split(':')[0]);
-    if(h>=5&&h<14) return 'Turno 1 (05h–14h)';
-    return 'Turno 2 (14h–00h)';
-  };
-  document.getElementById('vendas-cancel-tbody').innerHTML = canceladas.length===0?
-    '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhuma nota cancelada no período</td></tr>':
-    canceladas.sort((a,b)=>(a.data_emissao||'').localeCompare(b.data_emissao||'')).map(n=>{
-      const turno = getTurno2(n.hora_emissao);
-      const turnoColor = turno.includes('Turno 1')?'#3B8BD4':'#7F77DD';
-      return`<tr>
-        <td style="font-size:12px">${n.numero}</td>
-        <td style="font-size:12px;color:var(--text2);white-space:nowrap">${fmtDate(n.data_emissao)}</td>
-        <td style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text2)">${n.hora_emissao||'—'}</td>
-        <td><span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${turnoColor}18;color:${turnoColor};font-weight:500">${turno}</span></td>
-        <td style="font-size:12px">${n.empresa||'—'}</td>
-        <td><span class="badge ${n.modelo==='65'?'badge-blue':'badge-green'}">${n.modelo==='65'?'NFC-e':'NF-e'}</span></td>
-        <td style="text-align:right;font-weight:600;color:var(--red);font-size:12px">${fmt(n.valor_liquido)}</td>
-      </tr>`;
-    }).join('');
-
-  // ── Gráfico mix combustíveis ──────────────────────────
-  const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
-  const topComb = combustiveis.filter(p=>p.qtd>0).slice(0,6);
-  const mixCols = topComb.map((_,i)=>COLORS_PROD[i]);
-  if(chartVendasMix) chartVendasMix.destroy();
-  chartVendasMix = new Chart(document.getElementById('chart-vendas-mix'),{
-    type:'doughnut',
-    data:{labels:topComb.map(p=>p.nome),datasets:[{data:topComb.map(p=>+p.qtd.toFixed(2)),backgroundColor:mixCols,borderWidth:0,hoverOffset:5}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'65%',
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.toLocaleString('pt-BR',{maximumFractionDigits:2})} L`}}}}
-  });
-  document.getElementById('legend-vendas-mix').innerHTML=topComb.map((p,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${mixCols[i]}"></span>${p.nome}</span>`).join('');
-
-  // Badge compras e margens
-  const cbadge = document.getElementById('compras-badge');
-  if(cbadge) cbadge.textContent = comprasData.length ? `${comprasData.length} NFs de entrada` : '';
-  if(comprasData.length) renderMargens();
-}
-
-
-async function clearVendasXml(){
-  if(!confirm('Apagar todos os dados de vendas XML? Esta ação não pode ser desfeita.')) return;
-  await sb.from('vendas_xml').delete().neq('id','__none__');
-  vendasData = [];
-  renderVendas();
-  toast('Dados de vendas apagados','success');
-}
-
-function showCanceladas(){
-  const el = document.getElementById('vendas-cancel-table');
-  if(!el) return;
-  const visible = el.style.display !== 'none';
-  el.style.display = visible ? 'none' : 'block';
-  if(!visible) setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
-}
-
-
-// ── Gestão de usuários ────────────────────────────────────
-async function renderUsuarios(){
-  if(currentRole !== 'admin') return;
-  try{
-    const { data, error } = await sb.from('perfis').select('*').order('created_at');
-    if(error) throw error;
-    document.getElementById('usuarios-tbody').innerHTML = (data||[]).map(u=>`
-      <tr>
-        <td style="font-size:12px">${u.email}</td>
-        <td style="font-size:12px;color:var(--text2)">${u.nome||'—'}</td>
-        <td><span class="badge ${u.role==='admin'?'badge-blue':'badge-gray'}">${u.role==='admin'?'👑 Admin':'👁 Viewer'}</span></td>
-        <td style="font-size:11px;color:var(--text3)">${u.created_at?new Date(u.created_at).toLocaleDateString('pt-BR'):''}</td>
-        <td style="text-align:right">
-          ${u.id !== currentUser?.id ? `
-            <button class="btn btn-sm" onclick="toggleUserRole('${u.id}','${u.role}')" style="margin-right:4px">${u.role==='admin'?'→ Viewer':'→ Admin'}</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}','${u.email}')">Remover</button>
-          ` : '<span style="font-size:11px;color:var(--text3)">você</span>'}
-        </td>
-      </tr>`).join('') || '<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3)">Nenhum usuário</td></tr>';
-  }catch(e){ toast('Erro ao carregar usuários: '+e.message,'error'); }
-}
-
-function openNewUser(){
-  document.getElementById('nu-email').value='';
-  document.getElementById('nu-nome').value='';
-  document.getElementById('nu-role').value='viewer';
-  const errEl = document.getElementById('nu-error');
-  errEl.style.display='none';
-  errEl.style.background='';
-  errEl.style.color='';
-  errEl.style.border='';
-  const btn = document.querySelector('#modal-new-user .btn-primary');
-  if(btn) btn.textContent='Verificar usuário';
-  document.getElementById('modal-new-user').classList.remove('hidden');
-}
-
-async function confirmNewUser(){
-  const email = document.getElementById('nu-email').value.trim();
-  const nome  = document.getElementById('nu-nome').value.trim();
-  const role  = document.getElementById('nu-role').value;
-  const errEl = document.getElementById('nu-error');
-  errEl.style.display='none';
-
-  if(!email){ errEl.textContent='E-mail é obrigatório.'; errEl.style.display='block'; return; }
-
-  try{
-    // Verifica se usuário já existe na tabela perfis
-    const { data: existing } = await sb.from('perfis').select('id').eq('email', email).maybeSingle();
-    
-    if(existing){
-      // Usuário já existe — apenas atualiza o role e nome
-      await sb.from('perfis').update({ role, nome: nome||null }).eq('email', email);
-      document.getElementById('modal-new-user').classList.add('hidden');
-      toast(`Perfil de ${email} atualizado para ${role==='admin'?'administrador':'visualizador'}!`,'success');
-      renderUsuarios();
-      return;
-    }
-
-    // Usuário não existe ainda — instrui o admin a criar pelo Supabase
-    errEl.innerHTML = `
-      <strong>Para criar um novo usuário:</strong><br>
-      1. Acesse <a href="https://supabase.com/dashboard/project/trtebwwzfnnjltbdhpay/auth/users" target="_blank" style="color:var(--accent)">Supabase → Authentication → Users</a><br>
-      2. Clique em <strong>Add user</strong> e cadastre: <code>${email}</code><br>
-      3. Marque <strong>Auto Confirm User</strong><br>
-      4. Volte aqui e clique em <strong>Salvar perfil</strong> para definir o nível de acesso
-    `;
-    errEl.style.display='block';
-    errEl.style.background='rgba(59,139,212,.1)';
-    errEl.style.color='var(--text)';
-    errEl.style.border='1px solid rgba(59,139,212,.3)';
-    
-    // Muda botão para "Salvar perfil"
-    document.querySelector('#modal-new-user .btn-primary').textContent='Salvar perfil';
-  }catch(e){
-    errEl.textContent = 'Erro: ' + (e.message||'Tente novamente.');
-    errEl.style.display='block';
-  }
-}
-
-async function toggleUserRole(userId, currentRole){
-  const newRole = currentRole==='admin'?'viewer':'admin';
-  try{
-    await sb.from('perfis').update({role:newRole}).eq('id',userId);
-    toast(`Perfil alterado para ${newRole==='admin'?'administrador':'visualizador'}`,'success');
-    renderUsuarios();
-  }catch(e){ toast('Erro: '+e.message,'error'); }
-}
-
-async function deleteUser(userId, email){
-  if(!confirm(`Remover o usuário ${email}? Ele não conseguirá mais acessar o sistema.`)) return;
-  try{
-    await sb.from('perfis').delete().eq('id',userId);
-    toast('Usuário removido','success');
-    renderUsuarios();
-  }catch(e){ toast('Erro: '+e.message,'error'); }
-}
-
-// ── Tabs ──────────────────────────────────────────────────
-const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','vendas','fundo','regras','cadastro','usuarios'];
-function toggleNavGroup(groupId, btn){
-  const grp = document.getElementById(groupId);
-  const chevron = btn.querySelector('.nav-chevron');
-  const isOpen = !grp.classList.contains('collapsed');
-  if(isOpen){
-    grp.style.maxHeight = grp.scrollHeight + 'px';
-    requestAnimationFrame(()=>{ grp.style.maxHeight='0'; grp.classList.add('collapsed'); });
-    chevron.classList.remove('open');
-  } else {
-    grp.classList.remove('collapsed');
-    grp.style.maxHeight = grp.scrollHeight + 'px';
-    setTimeout(()=>grp.style.maxHeight='', 260);
-    chevron.classList.add('open');
-  }
-}
-
-function showTab(id){
-  // Marca sub-item ativo
-  document.querySelectorAll('.nav-item').forEach(t=>{
-    const onclick = t.getAttribute('onclick')||'';
-    t.classList.toggle('active', onclick.includes("'"+id+"'"));
-  });
-  TAB_NAMES.forEach(n=>document.getElementById('tab-'+n).classList.toggle('hidden',n!==id));
-  if(id==='regras') renderRegras();
-  if(id==='fundo'){ loadSaldoInicial(); if(allTx.length>0) renderFundo(); }
-  if(id==='vendas') renderVendas();
-  if(id==='usuarios') renderUsuarios();
-  if(id==='categorias-tab') renderCatGrid();
-}
-
-// ── Drag & Drop ───────────────────────────────────────────
-document.addEventListener('dragover',e=>e.preventDefault());
-document.addEventListener('drop',e=>{ e.preventDefault(); handleFiles(e.dataTransfer.files); });
-
-// ── Init ──────────────────────────────────────────────────
-(async()=>{
-  // Esconde layout e loader até confirmar autenticação
-  const layoutEl = document.querySelector('.layout');
-  const loaderEl = document.getElementById('loader');
-  if(layoutEl) layoutEl.style.display = 'none';
-  if(loaderEl) loaderEl.style.display = 'none';
-
-  try{
-    const isAuth = await checkAuth();
-    if(!isAuth) return; // showLoginScreen já foi chamado
-
-    if(loaderEl) loaderEl.style.display = 'flex';
-    await loadAll();
-    if(loaderEl) loaderEl.style.display = 'none';
-    renderCatGrid();
-    refresh();
-  }catch(e){
-    console.error('Erro crítico:', e);
-    if(loaderEl) loaderEl.style.display = 'none';
-    showLoginScreen();
-  }
-})();
-
-// Event delegation global
-document.addEventListener('click', function(e){
-  // Clique nas células do calendário de remetentes
-  const calCell = e.target.closest && e.target.closest('.rem-cal-cell');
-  if(calCell){
-    const dateStr = calCell.getAttribute('data-date');
-    if(dateStr) openRemDayDrill(dateStr);
-    return;
-  }
-  // Clique nas linhas de categoria
-  const row = e.target.closest && e.target.closest('.cat-row');
-  if(row){
-    const catName = row.getAttribute('data-catname');
-    const mes     = row.getAttribute('data-catmes')  || '';
-    const unid    = row.getAttribute('data-catunid') || '';
-    if(catName) openCatDrilldown(catName, mes, unid);
-    return;
-  }
-  // Botões das exceções
-  const btn = e.target.closest && e.target.closest('button[data-action]');
-  if(!btn) return;
-  const action = btn.getAttribute('data-action');
-  const remIdx = parseInt(btn.getAttribute('data-rem'));
-  if(action==='edit-ignored' && window._ignoredList){
-    editIgnored(window._ignoredList[remIdx]);
-  } else if(action==='remove-ignored' && window._ignoredList){
-    removeIgnored(window._ignoredList[remIdx]);
-  } else if(action==='delete-rule' && window._learnedList){
-    deleteRule(window._learnedList[remIdx].remetente);
-  }
-});
-
-// ── Compras XML (NF-e entrada) ────────────────────────────
-async function handleComprasZip(file){
-  if(!file) return;
-  toast('Processando ZIP de entradas...','success');
-  try{
-    if(!window.JSZip){
-      await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
-    }
-    const zip = await JSZip.loadAsync(file);
-    const xmlFiles = Object.keys(zip.files).filter(n=>n.toLowerCase().endsWith('.xml')&&!zip.files[n].dir&&!n.toUpperCase().includes('CANCELADA'));
-    const compras = [];
-    for(const name of xmlFiles){
-      const xmlStr = await zip.files[name].async('string');
-      const c = parseXmlCompra(xmlStr);
-      if(c) compras.push(c);
-    }
-    if(!compras.length){ toast('Nenhuma NF-e de entrada encontrada','error'); return; }
-
-    // Busca IDs existentes
-    const existRes = await sb.from('compras_xml').select('id');
-    const existIds = new Set((existRes.data||[]).map(r=>r.id));
-    const novas = compras.filter(c=>!existIds.has(c.id));
-
-    if(novas.length>0){
-      for(let i=0;i<novas.length;i+=200){
-        const lote = novas.slice(i,i+200).map(c=>({
-          id:c.id, numero:c.numero, serie:c.serie, data_emissao:c.data||null,
-          mes:c.mes, fornecedor:c.fornecedor, cnpj_fornecedor:c.cnpj_fornecedor,
-          destinatario:c.destinatario, cnpj_destinatario:c.cnpj_destinatario,
-          valor_total:c.valor_total, produtos:c.produtos
-        }));
-        const {error} = await sb.from('compras_xml').upsert(lote,{onConflict:'id'});
-        if(error) throw new Error(error.message);
-      }
-      toast(`${novas.length} NF-e de entrada importadas!`,'success');
-    } else {
-      toast('Nenhuma nota nova encontrada','success');
-    }
-    await loadComprasData();
-  }catch(e){ console.error(e); toast('Erro: '+e.message,'error'); }
-}
-
-function parseXmlCompra(xmlStr){
-  try{
-    const doc = new DOMParser().parseFromString(xmlStr,'text/xml');
-    const root = doc.documentElement;
-    const infNFe = root.getElementsByTagNameNS(NS,'infNFe')[0];
-    if(!infNFe) return null;
-    const mod = getTagNS(infNFe,'mod');
-    if(mod!=='55') return null; // só NF-e modelo 55
-    // tpNF não é filtrado — o fornecedor emite como saída (1) mas é entrada para o posto
-
-    const nNF   = getTagNS(infNFe,'nNF');
-    const serie = getTagNS(infNFe,'serie');
-    const dhEmi = getTagNS(infNFe,'dhEmi');
-    const data  = dhEmi?dhEmi.slice(0,10):'';
-    const mes   = data.slice(0,7);
-    const chave = (infNFe.getAttribute('Id')||'').replace('NFe','');
-
-    const emit  = infNFe.getElementsByTagNameNS(NS,'emit')[0];
-    const dest  = infNFe.getElementsByTagNameNS(NS,'dest')[0];
-    const fornecedor       = emit?getTagNS(emit,'xNome'):'';
-    const cnpj_fornecedor  = emit?getTagNS(emit,'CNPJ'):'';
-    const destinatario     = dest?getTagNS(dest,'xNome'):'';
-    const cnpj_destinatario= dest?getTagNS(dest,'CNPJ'):'';
-    const vNF = parseFloat(getTagNS(infNFe,'vNF')||'0');
-
-    const dets = infNFe.getElementsByTagNameNS(NS,'det');
-    const produtos = [];
-    for(const det of dets){
-      const xProd = getTagNS(det,'xProd');
-      const qCom  = parseFloat(getTagNS(det,'qCom')||'0');
-      const vProd = parseFloat(getTagNS(det,'vProd')||'0');
-      const vUnCom= parseFloat(getTagNS(det,'vUnCom')||'0');
-      const uCom  = getTagNS(det,'uCom');
-      if(xProd) produtos.push({nome:xProd,qtd:qCom,unidade:uCom,vProd,vUnCom});
-    }
-    return {id:chave||`${cnpj_fornecedor}_${nNF}_${serie}`,numero:nNF,serie,data,mes,
-      fornecedor,cnpj_fornecedor,destinatario,cnpj_destinatario,valor_total:vNF,produtos};
-  }catch(e){ return null; }
-}
-
-async function loadComprasData(){
-  try{
-    let all=[], from=0;
-    while(true){
-      const r = await sb.from('compras_xml').select('*').range(from,from+999);
-      if(r.error) throw r.error;
-      all=all.concat(r.data||[]);
-      if((r.data||[]).length<1000) break;
-      from+=1000;
-    }
-    comprasData = all;
-    const el = document.getElementById('compras-badge');
-    if(el) el.textContent = all.length ? `${all.length} NFs de entrada` : '';
-    renderMargens();
-  }catch(e){ console.error('Erro compras:',e); }
-}
-
-// ── Calcula e renderiza gráficos de margem ─────────────────
-function renderMargens(){
-  if(!comprasData.length) return;
-
-  const isComb = n => {
-    const u = n.toUpperCase();
-    if(/aditivo|lubrif|arla|fluido|filtro/i.test(u)) return false;
-    return /gasolina|etanol|diesel|hidratado/i.test(u);
-  };
-
-  // Custo por mês por combustível (das compras)
-  const custoMes = {}; // {mes: {produto: {qtd, vTotal}}}
-  comprasData.forEach(nota=>{
-    if(!nota.mes) return;
-    if(!custoMes[nota.mes]) custoMes[nota.mes]={};
-    (nota.produtos||[]).forEach(p=>{
-      if(!isComb(p.nome)) return;
-      const nome = normalizaComb(p.nome);
-      if(!custoMes[nota.mes][nome]) custoMes[nota.mes][nome]={qtd:0,vTotal:0};
-      custoMes[nota.mes][nome].qtd   += p.qtd||0;
-      custoMes[nota.mes][nome].vTotal += p.vProd||0;
-    });
-  });
-
-  // Venda por mês por combustível (das vendas)
-  const vendaMes = {}; // {mes: {produto: {qtd, vTotal}}}
-  const notas = getVendasFiltradas ? getVendasFiltradas() : vendasData;
-  notas.filter(n=>!n.cancelada).forEach(nota=>{
-    if(!nota.mes) return;
-    if(!vendaMes[nota.mes]) vendaMes[nota.mes]={};
-    (nota.produtos||[]).forEach(p=>{
-      if(!isComb(p.nome)) return;
-      const nome = normalizaComb(p.nome);
-      if(!vendaMes[nota.mes][nome]) vendaMes[nota.mes][nome]={qtd:0,vTotal:0};
-      vendaMes[nota.mes][nome].qtd   += p.qtd||0;
-      vendaMes[nota.mes][nome].vTotal += (p.vProd||0)-(p.vDesc||0);
-    });
-  });
-
-  // Meses e combustíveis únicos
-  const meses = [...new Set([...Object.keys(custoMes),...Object.keys(vendaMes)])].sort();
-  const combs  = [...new Set([
-    ...Object.values(custoMes).flatMap(m=>Object.keys(m)),
-    ...Object.values(vendaMes).flatMap(m=>Object.keys(m))
-  ])].sort();
-
-  const COLORS = ['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#EF9F27'];
-  const tc='#9c9b96', gc='rgba(0,0,0,0.05)';
-  const mesLabels = meses.map(m=>{ const[y,mo]=m.split('-'); return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y.slice(2); });
-
-  // ── Gráfico margem por mês por combustível (linhas) ─────
-  const datasets = combs.map((comb,ci)=>({
-    label: comb,
-    data: meses.map(mes=>{
-      const custo = custoMes[mes]?.[comb];
-      const venda = vendaMes[mes]?.[comb];
-      if(!custo||!venda||!custo.qtd||!venda.qtd) return null;
-      const precoCusto = custo.vTotal/custo.qtd;
-      const precoVenda = venda.vTotal/venda.qtd;
-      return +((precoVenda - precoCusto)/precoVenda*100).toFixed(2);
-    }),
-    borderColor: COLORS[ci%COLORS.length],
-    backgroundColor: COLORS[ci%COLORS.length]+'22',
-    borderWidth:2, pointRadius:3, tension:.3, fill:false, spanGaps:true
-  }));
-
-  if(chartMargemMes) chartMargemMes.destroy();
-  chartMargemMes = new Chart(document.getElementById('chart-margem-mes'),{
-    type:'line', data:{labels:mesLabels,datasets},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1)||'—'}%`}}},
-      scales:{x:{ticks:{color:tc,font:{size:10}},grid:{display:false}},
-              y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}
-  });
-  document.getElementById('legend-margem-mes').innerHTML=combs.map((c,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${COLORS[i%COLORS.length]}"></span>${c}</span>`).join('');
-
-  // ── Gráfico margem média por combustível (barras) ────────
-  const margemMedia = combs.map(comb=>{
-    const vals = meses.map(mes=>{
-      const custo = custoMes[mes]?.[comb];
-      const venda = vendaMes[mes]?.[comb];
-      if(!custo||!venda||!custo.qtd||!venda.qtd) return null;
-      return (venda.vTotal/venda.qtd - custo.vTotal/custo.qtd) / (venda.vTotal/venda.qtd) * 100;
-    }).filter(v=>v!==null);
-    return vals.length ? +(vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(2) : 0;
-  });
-
-  if(chartMargemComb) chartMargemComb.destroy();
-  chartMargemComb = new Chart(document.getElementById('chart-margem-comb'),{
-    type:'bar',
-    data:{labels:combs, datasets:[{data:margemMedia,backgroundColor:combs.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:5}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y.toFixed(1)}%`}}},
-      scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:30},grid:{display:false}},
-              y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}
-  });
-  document.getElementById('legend-margem-comb').innerHTML=combs.map((c,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${COLORS[i%COLORS.length]}"></span>${c} <strong>${margemMedia[i].toFixed(1)}%</strong></span>`).join('');
-
-  // ── Cards de margem geral ─────────────────────────────
-  const margemGeralComb = margemMedia.filter(v=>v>0);
-  const margemMediaGeral = margemGeralComb.length
-    ? +(margemGeralComb.reduce((s,v)=>s+v,0)/margemGeralComb.length).toFixed(1)
-    : null;
-
-  // Margem outros: % líquido/bruto das vendas sem combustível
-  const notas2 = getVendasFiltradas ? getVendasFiltradas() : vendasData;
-  let vBrutoOutros=0, vLiqOutros=0;
-  notas2.filter(n=>!n.cancelada).forEach(nota=>{
-    (nota.produtos||[]).filter(p=>p.nome&&!isComb(p.nome)).forEach(p=>{
-      vBrutoOutros += p.vProd||0;
-      vLiqOutros   += (p.vProd||0)-(p.vDesc||0);
-    });
-  });
-  const margemOutrosGeral = vBrutoOutros>0
-    ? +((vLiqOutros/vBrutoOutros)*100).toFixed(1)
-    : null;
-
-  // Atualiza cards
-  // margem-cards-row removido
-
-  const cardCombVal = document.getElementById('card-margem-comb-val');
-  const cardCombSub = document.getElementById('card-margem-comb-sub');
-  if(cardCombVal){
-    cardCombVal.textContent = margemMediaGeral!==null ? margemMediaGeral+'%' : '—';
-    if(cardCombSub) cardCombSub.textContent = margemMediaGeral!==null
-      ? `Média ponderada de ${combs.length} tipo(s) de combustível`
-      : 'Sem dados suficientes de compra';
-  }
-
-  // card outros produtos removido
-
-  // ── Gráfico margem outros produtos por mês ───────────────
-  const margemOutrosMes = meses.map(mes=>{
-    let vTotalVenda=0, qtdTotal=0;
-    notas.filter(n=>!n.cancelada&&n.mes===mes).forEach(nota=>{
-      (nota.produtos||[]).filter(p=>p.nome&&!isComb(p.nome)).forEach(p=>{
-        vTotalVenda += (p.vProd||0)-(p.vDesc||0);
-        qtdTotal++;
-      });
-    });
-    // Para outros produtos sem custo de compra, mostra variação de desconto vs bruto
-    let vBruto=0;
-    notas.filter(n=>!n.cancelada&&n.mes===mes).forEach(nota=>{
-      (nota.produtos||[]).filter(p=>p.nome&&!isComb(p.nome)).forEach(p=>{ vBruto+=p.vProd||0; });
-    });
-    if(!vBruto) return 0;
-    return +((vTotalVenda/vBruto)*100).toFixed(2);
-  });
-
-  // gráfico outros produtos removido
-}
-
-function normalizaComb(nome){
-  const n = nome.toUpperCase().replace(/'/g,'').trim();
-  // Gasolina VPower / Aditivada (compra: SHELL V-POWER GASOLINA ADITIVADA)
-  if(n.includes('GASOLINA') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADA')||n.includes('ADITIVADO'))) return 'Gasolina VPower';
-  // Gasolina Comum (compra: GASOLINA TIPO C GRANEL, venda: GASOLINA COMUM)
-  if(n.includes('GASOLINA')) return 'Gasolina Comum';
-  // Etanol VPower / Aditivado (compra: SHELL V-POWER ETANOL ADITIVADO)
-  if(n.includes('ETANOL') && (n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO')||n.includes('ADITIVADA'))) return 'Etanol VPower';
-  // Etanol Comum (compra: ETANOL HIDRATADO COMUM GRANEL, venda: ETANOL COMUM)
-  if(n.includes('ETANOL')||n.includes('HIDRATADO')) return 'Etanol Comum';
-  // Diesel — unifica todos em "Diesel S10" pois há apenas um tipo de compra (Shell V-Power Diesel S-10)
-  // Tanto "Shell V-Power Diesel S-10 Aditivado" (compra) quanto "DIESEL S10" (venda) → mesmo nome
-  if(n.includes('DIESEL')) return 'Diesel S10';
-  return nome;
-}
-</script>
-</body>
-</html>
