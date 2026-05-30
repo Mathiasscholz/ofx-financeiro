@@ -2775,6 +2775,367 @@ function showTab(id){
 }
 
 
+// ── Vendas XML ────────────────────────────────────────────
+function getVendasFiltradas(){
+  const mes    = document.getElementById('vendas-mes')?.value||'';
+  const emp    = document.getElementById('vendas-empresa')?.value||'';
+  const modelo = document.getElementById('vendas-modelo')?.value||'';
+  return vendasData.filter(n=>
+    (!mes    || n.mes===mes) &&
+    (!emp    || n.cnpj_emitente===emp) &&
+    (!modelo || n.modelo===modelo)
+  );
+}
+
+async function loadVendasData(){
+  try{
+    let all=[], from=0;
+    while(true){
+      const r = await sb.from('vendas_xml').select('*').range(from,from+999);
+      if(r.error) throw r.error;
+      all=all.concat(r.data||[]);
+      if((r.data||[]).length<1000) break;
+      from+=1000;
+    }
+    vendasData = all;
+    renderVendas();
+  }catch(e){ console.error('Erro ao carregar vendas:',e); }
+}
+
+function renderVendas(){
+  if(!vendasData.length){
+    document.getElementById('vendas-empty').style.display='block';
+    document.getElementById('vendas-content').style.display='none';
+    document.getElementById('vendas-filters').style.display='none';
+    document.getElementById('vendas-clear-btn').style.display='none';
+    document.getElementById('vendas-badge').textContent='';
+    return;
+  }
+  document.getElementById('vendas-filters').style.display='flex';
+  document.getElementById('vendas-clear-btn').style.display='inline-flex';
+  document.getElementById('vendas-empty').style.display='none';
+  document.getElementById('vendas-content').style.display='block';
+
+  const mesSel = document.getElementById('vendas-mes');
+  const empSel = document.getElementById('vendas-empresa');
+  const curMes = mesSel?.value; const curEmp = empSel?.value;
+  if(mesSel){
+    mesSel.innerHTML='<option value="">Todo o período</option>';
+    [...new Set(vendasData.map(n=>n.mes).filter(Boolean))].sort().forEach(m=>{
+      const[y,mo]=m.split('-'); const o=document.createElement('option'); o.value=m;
+      o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
+      mesSel.appendChild(o);
+    });
+    if(curMes) mesSel.value=curMes;
+  }
+  if(empSel){
+    empSel.innerHTML='<option value="">Todas</option>';
+    [...new Map(vendasData.map(n=>[n.cnpj_emitente,n.empresa]))].forEach(([cnpj,nome])=>{
+      const o=document.createElement('option'); o.value=cnpj; o.textContent=nome||cnpj; empSel.appendChild(o);
+    });
+    if(curEmp) empSel.value=curEmp;
+  }
+
+  const notas    = getVendasFiltradas();
+  const validas  = notas.filter(n=>!n.cancelada);
+  const canceladas = notas.filter(n=>n.cancelada);
+  const totBruto   = validas.reduce((s,n)=>s+(n.valor_bruto||0),0);
+  const totLiquido = validas.reduce((s,n)=>s+(n.valor_liquido||0),0);
+  const totDesc    = validas.reduce((s,n)=>s+(n.valor_desconto||0),0);
+  const totCancelVl= canceladas.reduce((s,n)=>s+(n.valor_liquido||0),0);
+  document.getElementById('vendas-badge').textContent=`${notas.length} notas`;
+
+  const isCombustivel = n => {
+    const u=(n||'').toUpperCase();
+    if(/aditivo|lubrif|arla|fluido|filtro/i.test(u)) return false;
+    return /gasolina|etanol|diesel|hidratado/i.test(u);
+  };
+  const prodMap = {};
+  validas.forEach(nota=>{
+    (nota.produtos||[]).forEach(p=>{
+      if(!p.nome) return;
+      const nome=p.nome.trim();
+      if(!prodMap[nome]) prodMap[nome]={nome,qtd:0,vBruto:0,vDesc:0,vLiq:0};
+      prodMap[nome].qtd+=p.qtd||0; prodMap[nome].vBruto+=p.vProd||0;
+      prodMap[nome].vDesc+=p.vDesc||0; prodMap[nome].vLiq+=(p.vProd||0)-(p.vDesc||0);
+    });
+  });
+  const todosProds=Object.values(prodMap).sort((a,b)=>b.vLiq-a.vLiq);
+  const combustiveis=todosProds.filter(p=>isCombustivel(p.nome));
+  const outros=todosProds.filter(p=>!isCombustivel(p.nome));
+  const totCombLiq=combustiveis.reduce((s,p)=>s+p.vLiq,0);
+  const totOutrosLiq=outros.reduce((s,p)=>s+p.vLiq,0);
+
+  document.getElementById('vendas-metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">Faturamento líquido total</div><div class="metric-val pos">${fmt(totLiquido)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Bruto: ${fmt(totBruto)} · ${validas.length} notas</div></div>
+    <div class="metric"><div class="metric-label">Combustíveis</div><div class="metric-val pos">${fmt(totCombLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totCombLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
+    <div class="metric"><div class="metric-label">Outros produtos</div><div class="metric-val pos">${fmt(totOutrosLiq)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totLiquido>0?(totOutrosLiq/totLiquido*100).toFixed(1):'0'}% do faturamento</div></div>
+    <div class="metric"><div class="metric-label">Descontos concedidos</div><div class="metric-val neg">${fmt(totDesc)}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${totBruto>0?(totDesc/totBruto*100).toFixed(2):'0'}% do bruto</div></div>
+    <div class="metric" style="border-left:3px solid #1D9E75"><div class="metric-label">Margem média — Combustíveis</div><div class="metric-val pos" id="card-margem-comb-val">—</div><div style="font-size:11px;color:var(--text3);margin-top:4px" id="card-margem-comb-sub">Importe NF-e de entrada para calcular</div></div>`;
+
+  const alertEl=document.getElementById('vendas-cancel-alert');
+  if(canceladas.length>0){
+    alertEl.style.display='flex';
+    const getTurno=hora=>{if(!hora)return'—';const h=parseInt(hora.split(':')[0]);return h>=5&&h<14?'Turno 1':'Turno 2';};
+    const t1=canceladas.filter(n=>getTurno(n.hora_emissao)==='Turno 1').length;
+    const t2=canceladas.filter(n=>getTurno(n.hora_emissao)==='Turno 2').length;
+    document.getElementById('vendas-cancel-title').textContent=`${canceladas.length} notas canceladas — ${fmt(totCancelVl)}`;
+    document.getElementById('vendas-cancel-sub').textContent=`${totLiquido>0?(totCancelVl/(totLiquido+totCancelVl)*100).toFixed(1):'0'}% do faturamento · Turno com mais cancelamentos: ${t1>=t2?'Turno 1 ('+t1+' cancel.)':'Turno 2 ('+t2+' cancel.)'}`;
+  } else { alertEl.style.display='none'; }
+
+  const COLORS=['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#D4537E','#639922','#888780','#EF9F27','#E24B4A'];
+  const prodTbody=document.getElementById('vendas-prod-tbody');
+  if(prodTbody) prodTbody.innerHTML=combustiveis.map((p,i)=>{
+    const pct=totCombLiq>0?p.vLiq/totCombLiq*100:0;
+    const precoMed=p.qtd>0?p.vLiq/p.qtd:0;
+    return`<tr><td style="font-weight:500;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:${COLORS[i%COLORS.length]};display:inline-block;margin-right:8px;vertical-align:middle"></span>${p.nome}</td>
+    <td style="text-align:right;font-size:12px">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})} L</td>
+    <td style="text-align:right;font-size:12px" class="amount-pos">${fmt(p.vBruto)}</td>
+    <td style="text-align:right;font-size:12px">${p.vDesc>0?'- '+fmt(p.vDesc):'—'}</td>
+    <td style="text-align:right;font-size:12px;font-weight:600" class="amount-pos">${fmt(p.vLiq)}</td>
+    <td style="text-align:right;font-size:12px;color:var(--text2)">${precoMed>0?'R$ '+precoMed.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4}):'—'}/L</td>
+    <td style="width:120px"><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:${COLORS[i%COLORS.length]};border-radius:3px"></div></div><span style="font-size:11px;color:var(--text2)">${pct.toFixed(1)}%</span></div></td></tr>`;
+  }).join('')||'<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum combustível</td></tr>';
+
+  const outrosTbody=document.getElementById('vendas-outros-tbody');
+  if(outrosTbody) outrosTbody.innerHTML=outros.slice(0,10).map((p,i)=>{
+    const pct=totOutrosLiq>0?p.vLiq/totOutrosLiq*100:0;
+    return`<tr><td style="text-align:center;font-size:11px;font-weight:600;color:var(--text3)">${i+1}</td>
+    <td style="font-weight:500;font-size:12px">${p.nome}</td>
+    <td style="text-align:right;font-size:12px">${p.qtd.toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
+    <td style="text-align:right;font-size:12px;font-weight:600" class="amount-pos">${fmt(p.vLiq)}</td>
+    <td><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:5px;width:${pct.toFixed(1)}%;background:#EF9F27;border-radius:3px"></div></div><span style="font-size:11px;color:var(--text2)">${pct.toFixed(1)}%</span></div></td></tr>`;
+  }).join('')||'<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3)">Nenhum produto</td></tr>';
+
+  const cancelTbody=document.getElementById('vendas-cancel-tbody');
+  if(cancelTbody) cancelTbody.innerHTML=canceladas.map(n=>{
+    const turno=!n.hora_emissao?'—':parseInt(n.hora_emissao)>=5&&parseInt(n.hora_emissao)<14?'Turno 1 (05h–14h)':'Turno 2 (14h–00h)';
+    const tc=turno.includes('Turno 1')?'#3B8BD4':'#7F77DD';
+    return`<tr><td style="font-size:12px">${n.numero}</td><td style="font-size:12px;color:var(--text2)">${fmtDate(n.data_emissao)}</td>
+    <td style="font-size:12px;font-family:monospace">${n.hora_emissao||'—'}</td>
+    <td><span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${tc}18;color:${tc};font-weight:500">${turno}</span></td>
+    <td style="font-size:12px">${n.empresa||'—'}</td>
+    <td><span class="badge ${n.modelo==='65'?'badge-blue':'badge-green'}">${n.modelo==='65'?'NFC-e':'NF-e'}</span></td>
+    <td style="text-align:right;font-weight:600;color:var(--red);font-size:12px">${fmt(n.valor_liquido)}</td></tr>`;
+  }).join('')||'<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhuma cancelada</td></tr>';
+
+  const topComb=combustiveis.filter(p=>p.qtd>0).slice(0,6);
+  const mixCols=topComb.map((_,i)=>COLORS[i]);
+  if(chartVendasMix) chartVendasMix.destroy();
+  const mixCanvas=document.getElementById('chart-vendas-mix');
+  if(mixCanvas){
+    chartVendasMix=new Chart(mixCanvas,{type:'doughnut',
+      data:{labels:topComb.map(p=>p.nome),datasets:[{data:topComb.map(p=>+p.qtd.toFixed(2)),backgroundColor:mixCols,borderWidth:0,hoverOffset:5}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.toLocaleString('pt-BR',{maximumFractionDigits:2})} L`}}}}});
+    const legendEl=document.getElementById('legend-vendas-mix');
+    if(legendEl) legendEl.innerHTML=topComb.map((p,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${mixCols[i]}"></span>${p.nome}</span>`).join('');
+  }
+  const cbadge=document.getElementById('compras-badge');
+  if(cbadge) cbadge.textContent=comprasData.length?`${comprasData.length} NFs de entrada`:'';
+  if(comprasData.length) renderMargens();
+}
+
+function showCanceladas(){
+  const el=document.getElementById('vendas-cancel-table');
+  if(!el) return;
+  el.style.display=el.style.display==='none'?'block':'none';
+  if(el.style.display==='block') el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function clearVendasXml(){
+  if(!confirm('Apagar todos os dados de vendas XML?')) return;
+  await sb.from('vendas_xml').delete().neq('id','__none__');
+  vendasData=[];
+  renderVendas();
+  toast('Dados de vendas apagados','success');
+}
+
+function normalizaComb(nome){
+  const n=nome.toUpperCase().replace(/'/g,'').trim();
+  if(n.includes('GASOLINA')&&(n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADA')||n.includes('ADITIVADO'))) return 'Gasolina VPower';
+  if(n.includes('GASOLINA')) return 'Gasolina Comum';
+  if(n.includes('ETANOL')&&(n.includes('VPOWER')||n.includes('V-POWER')||n.includes('ADITIVADO')||n.includes('ADITIVADA'))) return 'Etanol VPower';
+  if(n.includes('ETANOL')||n.includes('HIDRATADO')) return 'Etanol Comum';
+  if(n.includes('DIESEL')) return 'Diesel S10';
+  return nome;
+}
+
+function renderMargens(){
+  if(!comprasData.length) return;
+  const isComb=n=>{const u=n.toUpperCase();if(/aditivo|lubrif|arla|fluido|filtro/i.test(u))return false;return /gasolina|etanol|diesel|hidratado/i.test(u);};
+  const custoMes={};
+  comprasData.forEach(nota=>{
+    if(!nota.mes) return;
+    if(!custoMes[nota.mes]) custoMes[nota.mes]={};
+    (nota.produtos||[]).forEach(p=>{
+      if(!isComb(p.nome)) return;
+      const nome=normalizaComb(p.nome);
+      if(!custoMes[nota.mes][nome]) custoMes[nota.mes][nome]={qtd:0,vTotal:0};
+      custoMes[nota.mes][nome].qtd+=p.qtd||0; custoMes[nota.mes][nome].vTotal+=p.vProd||0;
+    });
+  });
+  const vendaMes={};
+  const notas=getVendasFiltradas?getVendasFiltradas():vendasData;
+  notas.filter(n=>!n.cancelada).forEach(nota=>{
+    if(!nota.mes) return;
+    if(!vendaMes[nota.mes]) vendaMes[nota.mes]={};
+    (nota.produtos||[]).forEach(p=>{
+      if(!isComb(p.nome)) return;
+      const nome=normalizaComb(p.nome);
+      if(!vendaMes[nota.mes][nome]) vendaMes[nota.mes][nome]={qtd:0,vTotal:0};
+      vendaMes[nota.mes][nome].qtd+=p.qtd||0; vendaMes[nota.mes][nome].vTotal+=(p.vProd||0)-(p.vDesc||0);
+    });
+  });
+  const meses=[...new Set([...Object.keys(custoMes),...Object.keys(vendaMes)])].sort();
+  const combs=[...new Set([...Object.values(custoMes).flatMap(m=>Object.keys(m)),...Object.values(vendaMes).flatMap(m=>Object.keys(m))])].sort();
+  const COLORS=['#3B8BD4','#1D9E75','#7F77DD','#D85A30','#BA7517','#EF9F27'];
+  const tc='#9c9b96',gc='rgba(0,0,0,0.05)';
+  const mesLabels=meses.map(m=>{const[y,mo]=m.split('-');return['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y.slice(2);});
+  const datasets=combs.map((comb,ci)=>({label:comb,data:meses.map(mes=>{
+    const custo=custoMes[mes]?.[comb];const venda=vendaMes[mes]?.[comb];
+    if(!custo||!venda||!custo.qtd||!venda.qtd) return null;
+    return +((venda.vTotal/venda.qtd-custo.vTotal/custo.qtd)/(venda.vTotal/venda.qtd)*100).toFixed(2);
+  }),borderColor:COLORS[ci%COLORS.length],borderWidth:2,pointRadius:3,tension:.3,fill:false,spanGaps:true}));
+  if(chartMargemMes) chartMargemMes.destroy();
+  const mesMesCanvas=document.getElementById('chart-margem-mes');
+  if(mesMesCanvas){chartMargemMes=new Chart(mesMesCanvas,{type:'line',data:{labels:mesLabels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1)||'—'}%`}}},scales:{x:{ticks:{color:tc,font:{size:10}},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}});}
+  const legendMesEl=document.getElementById('legend-margem-mes');
+  if(legendMesEl) legendMesEl.innerHTML=combs.map((c,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${COLORS[i%COLORS.length]}"></span>${c}</span>`).join('');
+  const margemMedia=combs.map(comb=>{const vals=meses.map(mes=>{const custo=custoMes[mes]?.[comb];const venda=vendaMes[mes]?.[comb];if(!custo||!venda||!custo.qtd||!venda.qtd)return null;return(venda.vTotal/venda.qtd-custo.vTotal/custo.qtd)/(venda.vTotal/venda.qtd)*100;}).filter(v=>v!==null);return vals.length?+(vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(2):0;});
+  if(chartMargemComb) chartMargemComb.destroy();
+  const combCanvas=document.getElementById('chart-margem-comb');
+  if(combCanvas){chartMargemComb=new Chart(combCanvas,{type:'bar',data:{labels:combs,datasets:[{data:margemMedia,backgroundColor:combs.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y.toFixed(1)}%`}}},scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:30},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:gc}}}}});}
+  const legendCombEl=document.getElementById('legend-margem-comb');
+  if(legendCombEl) legendCombEl.innerHTML=combs.map((c,i)=>`<span class="legend-item"><span class="legend-sq" style="background:${COLORS[i%COLORS.length]}"></span>${c} <strong>${margemMedia[i].toFixed(1)}%</strong></span>`).join('');
+  const cardVal=document.getElementById('card-margem-comb-val');
+  const cardSub=document.getElementById('card-margem-comb-sub');
+  const validMedia=margemMedia.filter(v=>v>0);
+  if(cardVal) cardVal.textContent=validMedia.length?+(validMedia.reduce((s,v)=>s+v,0)/validMedia.length).toFixed(1)+'%':'—';
+  if(cardSub) cardSub.textContent=validMedia.length?`Média de ${combs.length} tipo(s) de combustível`:'Sem dados suficientes';
+}
+
+async function handleComprasZip(file){
+  if(!file) return;
+  toast('Processando ZIP de entradas...','success');
+  try{
+    if(!window.JSZip){await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+    async function extractXmls2(zipObj){const m={};for(const[name,entry]of Object.entries(zipObj.files)){if(entry.dir)continue;const l=name.toLowerCase();if(l.endsWith('.xml')){m[name]=await entry.async('string');}else if(l.endsWith('.zip')){try{const d=await entry.async('arraybuffer');const iz=await JSZip.loadAsync(d);Object.assign(m,await extractXmls2(iz));}catch(e){}}}return m;}
+    const zip=await JSZip.loadAsync(file);
+    const xmlMap=await extractXmls2(zip);
+    const compras=[];
+    for(const xmlStr of Object.values(xmlMap)){const c=parseXmlCompra(xmlStr);if(c)compras.push(c);}
+    if(!compras.length){toast('Nenhuma NF-e de entrada encontrada','error');return;}
+    const existRes=await sb.from('compras_xml').select('id');
+    const existIds=new Set((existRes.data||[]).map(r=>r.id));
+    const novas=compras.filter(c=>!existIds.has(c.id));
+    if(novas.length>0){
+      for(let i=0;i<novas.length;i+=200){
+        const lote=novas.slice(i,i+200).map(c=>({id:c.id,numero:c.numero,serie:c.serie,data_emissao:c.data||null,mes:c.mes,fornecedor:c.fornecedor,cnpj_fornecedor:c.cnpj_fornecedor,destinatario:c.destinatario,cnpj_destinatario:c.cnpj_destinatario,valor_total:c.valor_total,produtos:c.produtos}));
+        const{error}=await sb.from('compras_xml').upsert(lote,{onConflict:'id'});
+        if(error)throw new Error(error.message);
+      }
+      toast(`${novas.length} NF-e de entrada importadas!`,'success');
+    }else{toast('Nenhuma nota nova','success');}
+    await loadComprasData();
+  }catch(e){console.error(e);toast('Erro: '+e.message,'error');}
+}
+
+function parseXmlCompra(xmlStr){
+  try{
+    const doc=new DOMParser().parseFromString(xmlStr,'text/xml');
+    const root=doc.documentElement;
+    const infNFe=root.getElementsByTagNameNS(NS,'infNFe')[0];
+    if(!infNFe)return null;
+    const mod=getTagNS(infNFe,'mod');if(mod!=='55')return null;
+    const nNF=getTagNS(infNFe,'nNF'),serie=getTagNS(infNFe,'serie');
+    const dhEmi=getTagNS(infNFe,'dhEmi');
+    const data=dhEmi?dhEmi.slice(0,10):'',mes=data.slice(0,7);
+    const chave=(infNFe.getAttribute('Id')||'').replace('NFe','');
+    const emit=infNFe.getElementsByTagNameNS(NS,'emit')[0];
+    const dest=infNFe.getElementsByTagNameNS(NS,'dest')[0];
+    const fornecedor=emit?getTagNS(emit,'xNome'):'',cnpj_fornecedor=emit?getTagNS(emit,'CNPJ'):'';
+    const destinatario=dest?getTagNS(dest,'xNome'):'',cnpj_destinatario=dest?getTagNS(dest,'CNPJ'):'';
+    const vNF=parseFloat(getTagNS(infNFe,'vNF')||'0');
+    const dets=infNFe.getElementsByTagNameNS(NS,'det');
+    const produtos=[];
+    for(const det of dets){const xProd=getTagNS(det,'xProd'),qCom=parseFloat(getTagNS(det,'qCom')||'0'),vProd=parseFloat(getTagNS(det,'vProd')||'0'),vUnCom=parseFloat(getTagNS(det,'vUnCom')||'0'),uCom=getTagNS(det,'uCom');if(xProd)produtos.push({nome:xProd,qtd:qCom,unidade:uCom,vProd,vUnCom});}
+    return{id:chave||`${cnpj_fornecedor}_${nNF}_${serie}`,numero:nNF,serie,data,mes,fornecedor,cnpj_fornecedor,destinatario,cnpj_destinatario,valor_total:vNF,produtos};
+  }catch(e){return null;}
+}
+
+async function loadComprasData(){
+  try{
+    let all=[],from=0;
+    while(true){const r=await sb.from('compras_xml').select('*').range(from,from+999);if(r.error)throw r.error;all=all.concat(r.data||[]);if((r.data||[]).length<1000)break;from+=1000;}
+    comprasData=all;
+    const el=document.getElementById('compras-badge');
+    if(el) el.textContent=all.length?`${all.length} NFs de entrada`:'';
+    renderMargens();
+  }catch(e){console.error('Erro compras:',e);}
+}
+
+// ── Gestão de usuários ────────────────────────────────────
+async function renderUsuarios(){
+  if(currentRole!=='admin') return;
+  try{
+    const{data,error}=await sb.from('perfis').select('*').order('created_at');
+    if(error)throw error;
+    document.getElementById('usuarios-tbody').innerHTML=(data||[]).map(u=>`
+      <tr>
+        <td style="font-size:12px">${u.email}</td>
+        <td style="font-size:12px;color:var(--text2)">${u.nome||'—'}</td>
+        <td><span class="badge ${u.role==='admin'?'badge-blue':'badge-gray'}">${u.role==='admin'?'👑 Admin':'👁 Viewer'}</span></td>
+        <td style="font-size:11px;color:var(--text3)">${u.created_at?new Date(u.created_at).toLocaleDateString('pt-BR'):''}</td>
+        <td style="text-align:right">${u.id!==currentUser?.id?`<button class="btn btn-sm" onclick="toggleUserRole('${u.id}','${u.role}')" style="margin-right:4px">${u.role==='admin'?'→ Viewer':'→ Admin'}</button><button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}','${u.email}')">Remover</button>`:'<span style="font-size:11px;color:var(--text3)">você</span>'}</td>
+      </tr>`).join('')||'<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text3)">Nenhum usuário</td></tr>';
+  }catch(e){toast('Erro ao carregar usuários: '+e.message,'error');}
+}
+
+function openNewUser(){
+  const errEl=document.getElementById('nu-error');
+  document.getElementById('nu-email').value='';
+  document.getElementById('nu-nome').value='';
+  document.getElementById('nu-role').value='viewer';
+  if(errEl){errEl.style.display='none';errEl.style.background='';errEl.style.color='';errEl.style.border='';}
+  const btn=document.querySelector('#modal-new-user .btn-primary');
+  if(btn) btn.textContent='Verificar usuário';
+  document.getElementById('modal-new-user').classList.remove('hidden');
+}
+
+async function confirmNewUser(){
+  const email=document.getElementById('nu-email').value.trim();
+  const nome=document.getElementById('nu-nome').value.trim();
+  const role=document.getElementById('nu-role').value;
+  const errEl=document.getElementById('nu-error');
+  errEl.style.display='none';
+  if(!email){errEl.textContent='E-mail é obrigatório.';errEl.style.display='block';return;}
+  try{
+    const{data:existing}=await sb.from('perfis').select('id').eq('email',email).maybeSingle();
+    if(existing){
+      await sb.from('perfis').update({role,nome:nome||null}).eq('email',email);
+      document.getElementById('modal-new-user').classList.add('hidden');
+      toast(`Perfil de ${email} atualizado!`,'success');
+      renderUsuarios();return;
+    }
+    errEl.innerHTML=`<strong>Para criar novo usuário:</strong><br>1. Acesse <a href="https://supabase.com/dashboard/project/trtebwwzfnnjltbdhpay/auth/users" target="_blank" style="color:var(--accent)">Supabase → Auth → Users</a><br>2. Clique em <strong>Add user</strong> e cadastre: <code>${email}</code><br>3. Marque <strong>Auto Confirm User</strong><br>4. Volte aqui e clique em <strong>Salvar perfil</strong>`;
+    errEl.style.display='block';errEl.style.background='rgba(59,139,212,.1)';errEl.style.color='var(--text)';errEl.style.border='1px solid rgba(59,139,212,.3)';
+    const btn=document.querySelector('#modal-new-user .btn-primary');if(btn)btn.textContent='Salvar perfil';
+  }catch(e){errEl.textContent='Erro: '+(e.message||'Tente novamente.');errEl.style.display='block';}
+}
+
+async function toggleUserRole(userId,currentRole2){
+  const newRole=currentRole2==='admin'?'viewer':'admin';
+  try{await sb.from('perfis').update({role:newRole}).eq('id',userId);toast(`Perfil alterado para ${newRole}`,'success');renderUsuarios();}
+  catch(e){toast('Erro: '+e.message,'error');}
+}
+
+async function deleteUser(userId,email){
+  if(!confirm(`Remover ${email}?`)) return;
+  try{await sb.from('perfis').delete().eq('id',userId);toast('Usuário removido','success');renderUsuarios();}
+  catch(e){toast('Erro: '+e.message,'error');}
+}
+
+
 // ── Inicialização ─────────────────────────────────────────
 (async()=>{
   const layoutEl = document.querySelector('.layout');
