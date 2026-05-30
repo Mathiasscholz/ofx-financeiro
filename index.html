@@ -1551,19 +1551,28 @@ function renderDashboard(){
 let remSort={col:'total',dir:-1};
 function sortRem(col){ if(remSort.col===col) remSort.dir*=-1; else{remSort.col=col;remSort.dir=-1;} renderRemetentes(); }
 function populateRemFiltros(){
-  const mes=document.getElementById('rem-mes'); const cur=mes.value;
-  mes.innerHTML='<option value="">Todos os meses</option>';
-  [...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort().forEach(m=>{ const[y,mo]=m.split('-'); const o=document.createElement('option'); o.value=m; o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y; mes.appendChild(o); });
-  if(cur) mes.value=cur;
-  const emp=document.getElementById('rem-empresa'); const cure=emp.value;
-  emp.innerHTML='<option value="">Todas as empresas</option>';
-  [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; emp.appendChild(o); });
-  if(cure) emp.value=cure;
+  // rem-mes foi substituído pelo calendário — função mantida para compatibilidade
+  const mesEl = document.getElementById('rem-mes');
+  if(mesEl){
+    const cur = mesEl.value;
+    mesEl.innerHTML='<option value="">Todos os meses</option>';
+    [...new Set(allTx.map(t=>t.date?t.date.slice(0,7):'').filter(Boolean))].sort().forEach(m=>{
+      const[y,mo]=m.split('-'); const o=document.createElement('option'); o.value=m;
+      o.textContent=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo-1]+'/'+y;
+      mesEl.appendChild(o);
+    });
+    if(cur) mesEl.value=cur;
+  }
+  const empEl = document.getElementById('rem-empresa');
+  if(empEl){
+    const cur = empEl.value;
+    empEl.innerHTML='<option value="">Todas as empresas</option>';
+    [...new Set(allTx.map(t=>t.company).filter(Boolean))].sort().forEach(c=>{
+      const o=document.createElement('option'); o.value=c; o.textContent=c; empEl.appendChild(o);
+    });
+    if(cur) empEl.value=cur;
+  }
 }
-// ── Calendário de remetentes ─────────────────────────────
-let remFiltroSelecionados = new Set();
-let remCalDate = new Date(); // mês exibido no calendário
-
 function remCalPrev(){
   remCalDate = new Date(remCalDate.getFullYear(), remCalDate.getMonth()-1, 1);
   renderRemetentes();
