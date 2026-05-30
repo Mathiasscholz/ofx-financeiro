@@ -2730,6 +2730,42 @@ async function handleXmlZip(file){
     }
   }
 }
+// ── Tabs e navegação ──────────────────────────────────────
+const TAB_NAMES=['dashboard','remetentes','transacoes','categorias-tab','analise-cat','empresas','vendas','fundo','regras','cadastro','usuarios'];
+
+function toggleNavGroup(groupId, btn){
+  const grp = document.getElementById(groupId);
+  const chevron = btn.querySelector('.nav-chevron');
+  const isOpen = !grp.classList.contains('collapsed');
+  if(isOpen){
+    grp.style.maxHeight = grp.scrollHeight + 'px';
+    requestAnimationFrame(()=>{ grp.style.maxHeight='0'; grp.classList.add('collapsed'); });
+    if(chevron) chevron.classList.remove('open');
+  } else {
+    grp.classList.remove('collapsed');
+    grp.style.maxHeight = grp.scrollHeight + 'px';
+    setTimeout(()=>grp.style.maxHeight='', 260);
+    if(chevron) chevron.classList.add('open');
+  }
+}
+
+function showTab(id){
+  document.querySelectorAll('.nav-item').forEach(t=>{
+    const onclick = t.getAttribute('onclick')||'';
+    t.classList.toggle('active', onclick.includes("'"+id+"'"));
+  });
+  TAB_NAMES.forEach(n=>{
+    const el = document.getElementById('tab-'+n);
+    if(el) el.classList.toggle('hidden', n!==id);
+  });
+  if(id==='regras') renderRegras();
+  if(id==='fundo'){ loadSaldoInicial(); if(allTx.length>0) renderFundo(); }
+  if(id==='vendas') renderVendas();
+  if(id==='usuarios') renderUsuarios();
+  if(id==='categorias-tab') renderCatGrid();
+}
+
+
 // ── Inicialização ─────────────────────────────────────────
 (async()=>{
   const layoutEl = document.querySelector('.layout');
