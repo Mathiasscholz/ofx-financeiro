@@ -1174,6 +1174,8 @@ sb.auth.onAuthStateChange((event, session)=>{
 
 
 let allTx=[], accounts=[], customCats=[], learnedRules={}, ignoredRemetentes=new Set(), saldoInicialData={dataIni:'',saldoCC:0,saldoFundo:0};
+let remCalDate = null;
+let remFiltroSelecionados = new Set();
 let unknownQueue=[], currentUnknown=null;
 
 // ── Categorias padrão ─────────────────────────────────────
