@@ -1100,8 +1100,12 @@ function showLoginScreen(){
 }
 
 function hideLoginScreen(){
-  document.getElementById('login-screen').style.display = 'none';
-  document.querySelector('.layout').style.display = 'flex';
+  const loginEl = document.getElementById('login-screen');
+  const layoutEl = document.querySelector('.layout');
+  const loaderEl = document.getElementById('loader');
+  if(loginEl) loginEl.style.display = 'none';
+  if(layoutEl){ layoutEl.style.display = 'flex'; layoutEl.style.visibility = 'visible'; layoutEl.style.opacity = '1'; }
+  if(loaderEl) loaderEl.style.display = 'none';
 }
 
 async function doLogin(){
@@ -1139,6 +1143,7 @@ async function doLogin(){
   await loadUserRole();
   await loadAll();
   document.getElementById('loader').style.display = 'none';
+  renderCatGrid();
   refresh();
 }
 
