@@ -1529,13 +1529,29 @@ function getDashTx(){
 }
 function renderDashboard(){
   const tx=getDashTx();
-  const cred=tx.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
-  const deb=tx.filter(t=>t.amount<0).reduce((s,t)=>s+t.amount,0);
-  const saldo=cred+deb;
+
+  // Identifica movimentações do Fundo DI
+  const isFundoAplic  = t => /aplicacao trust di|aplic trust di/i.test(t.description||'');
+  const isFundoResgate= t => /int resgate trust di|resgate trust di/i.test(t.description||'');
+  const isFundo       = t => isFundoAplic(t) || isFundoResgate(t);
+
+  // Entradas/saídas excluindo Fundo DI
+  const txSemFundo = tx.filter(t=>!isFundo(t));
+  const cred = txSemFundo.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+  const deb  = txSemFundo.filter(t=>t.amount<0).reduce((s,t)=>s+t.amount,0);
+  const saldo= cred+deb;
+
+  // Totais do Fundo DI no período
+  const totalAplic   = tx.filter(t=>isFundoAplic(t)).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalResgate = tx.filter(t=>isFundoResgate(t)).reduce((s,t)=>s+Math.abs(t.amount),0);
+
   document.getElementById('metrics-row').innerHTML=`
-    <div class="metric"><div class="metric-label">Total entradas</div><div class="metric-val pos">${fmt(cred)}</div></div>
-    <div class="metric"><div class="metric-label">Total saídas</div><div class="metric-val neg">${fmt(deb)}</div></div>
-    <div class="metric"><div class="metric-label">Saldo</div><div class="metric-val ${saldo>=0?'pos':'neg'}">${fmtS(saldo)}</div></div>`;
+    <div class="metric"><div class="metric-label">Total entradas</div><div class="metric-val pos">${fmt(cred)}</div><div style="font-size:10px;color:var(--text3);margin-top:3px">Excluindo Fundo DI</div></div>
+    <div class="metric"><div class="metric-label">Total saídas</div><div class="metric-val neg">${fmt(deb)}</div><div style="font-size:10px;color:var(--text3);margin-top:3px">Excluindo Fundo DI</div></div>
+    <div class="metric"><div class="metric-label">Saldo</div><div class="metric-val ${saldo>=0?'pos':'neg'}">${fmtS(saldo)}</div></div>
+    ${totalAplic>0||totalResgate>0?`
+    <div class="metric" style="border-left:3px solid #7F77DD"><div class="metric-label">Aplicações Fundo DI</div><div class="metric-val neg">${fmt(totalAplic)}</div><div style="font-size:10px;color:var(--text3);margin-top:3px">Saídas para o fundo</div></div>
+    <div class="metric" style="border-left:3px solid #1D9E75"><div class="metric-label">Resgates Fundo DI</div><div class="metric-val pos">${fmt(totalResgate)}</div><div style="font-size:10px;color:var(--text3);margin-top:3px">Entradas do fundo</div></div>`:''}`;
   const byMonth={};
   tx.forEach(t=>{ const m=t.date?t.date.slice(0,7):''; if(!m) return; if(!byMonth[m]) byMonth[m]={in:0,out:0}; if(t.amount>0) byMonth[m].in+=t.amount; else byMonth[m].out+=Math.abs(t.amount); });
   const months=Object.keys(byMonth).sort();
@@ -1586,6 +1602,14 @@ function renderRemetentes(){
   const tipo = document.getElementById('rem-tipo').value;
   const emp  = document.getElementById('rem-empresa').value;
   const today = new Date();
+
+  // Mostra/esconde conteúdo baseado em dados
+  const hasData = allTx.length > 0;
+  const noDataEl = document.getElementById('no-data-rem');
+  const contentEl = document.getElementById('rem-content');
+  if(noDataEl) noDataEl.classList.toggle('hidden', hasData);
+  if(contentEl) contentEl.classList.toggle('hidden', !hasData);
+  if(!hasData) return;
 
   // Popula select de empresa
   const empSel = document.getElementById('rem-empresa');
