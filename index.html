@@ -3178,6 +3178,8 @@ async function deleteUser(userId,email){
     const isAuth = await checkAuth();
     if(!isAuth) return;
 
+    // Sessão válida — mostra layout e carrega dados
+    if(layoutEl){ layoutEl.style.display='flex'; layoutEl.style.visibility='visible'; layoutEl.style.opacity='1'; }
     if(loaderEl) loaderEl.style.display = 'flex';
     renderCatGrid();
     await loadAll();
@@ -3186,6 +3188,7 @@ async function deleteUser(userId,email){
     refresh();
   }catch(e){
     console.error('Erro crítico:', e);
+    if(layoutEl) layoutEl.style.display = 'none';
     if(loaderEl) loaderEl.style.display = 'none';
     showLoginScreen();
   }
